@@ -1,0 +1,471 @@
+"use client";
+
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import ProductsWorkspace, { type AdminProduct, type ProductPriceVariant } from "./products-workspace";
+import PriceProfileWorkspace from "./price-profile-workspace";
+import ProductCreatePage from "./product-create-page";
+import CategoriesWorkspace, { type AdminCategory } from "./categories-workspace";
+import CustomersWorkspace from "./customers-workspace";
+import OrderCreateWorkspace from "./order-create-workspace";
+import PromotionsWorkspace from "./promotions-workspace";
+import PromotionCreateWorkspace from "./promotion-create-workspace";
+import BlogWorkspace from "./blog-workspace";
+import BlogEditorPage from "./blog-editor-page";
+import ReportsWorkspace from "./reports-workspace";
+import RevenueWorkspace from "./revenue-workspace";
+import MaterialsWorkspace, { DEFAULT_MATERIALS, normalizeMaterialOptions, type MaterialOption, type MaterialMutationValue, type MaterialSyncStatus } from "./materials-workspace";
+import BannerFooterWorkspace from "./banner-footer-workspace";
+import InventoryWorkspace, { type Tab as InventoryTab } from "./inventory-workspace";
+import DashboardWorkspace, { type DashboardReport } from "./dashboard-workspace";
+import OrderReceiptModal, { type OrderReceiptData, type OrderReceiptLine } from "./order-receipt-modal";
+import OrderDetailPanel from "./order-detail-panel";
+import ShippingWorkspace from "./shipping-workspace";
+import { apiBaseUrl } from "../lib/api";
+
+type Row = Record<string, any>;
+type GeneralFormView = "products" | "categories" | "customers" | "promotions" | "posts";
+type FieldDefinition = { key: string; label: string; type?: string; numeric?: boolean };
+type Product = AdminProduct;
+type Order = OrderReceiptData & { apiId?:string; product:string; sku:string; quantity:number };
+type AdminData = { products:Product[]; orders:Order[]; categories:AdminCategory[]; customers:Row[]; promotions:Row[]; posts:Row[]; materials:MaterialOption[] };
+type ViewKey = keyof AdminData | "promotions" | "posts" | "overview" | "reports" | "revenue" | "pricing" | "settings" | "productCreate" | "orderCreate" | "promotionCreate" | "blogEditor" | "banners" | "inventory" | "inventoryInbound" | "inventoryOutbound" | "inventoryHistory" | "inventoryReceipts" | "shipping";
+
+const paths:Record<string,string>={
+  home:'<path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/><path d="M9 21v-6h6v6"/>',bag:'<rect x="4" y="6" width="16" height="15" rx="2"/><path d="M8 6V4a4 4 0 0 1 8 0v2M8 11h8"/>',box:'<path d="m12 3 9 5-9 5-9-5 9-5Z"/><path d="M3 8v9l9 5 9-5V8M12 13v9"/>',folder:'<path d="M3 6a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM3 9h18"/>',users:'<path d="M16 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="10" cy="7" r="4"/><path d="M20 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>',tag:'<path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V4h9l8.6 8.6a.57.57 0 0 1 0 .8Z"/><circle cx="7.5" cy="8.5" r="1"/>',file:'<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M8 13h8M8 17h8"/>',inventory:'<path d="M3 7h18v14H3zM5 3h14v4H5zM8 11h8M8 15h8"/>',chart:'<path d="M3 3v18h18M7 14l4-4 4 3 6-7M17 6h4v4"/>',settings:'<circle cx="12" cy="12" r="3"/><path d="m19.4 15 .1.1a1.7 1.7 0 1 1-2.4 2.4l-.1-.1a1.7 1.7 0 0 0-2.9 1.2v.2a1.7 1.7 0 0 1-3.4 0v-.2a1.7 1.7 0 0 0-2.9-1.2l-.1.1a1.7 1.7 0 1 1-2.4-2.4l.1-.1A1.7 1.7 0 0 0 4.2 12H4a1.7 1.7 0 0 1 0-3.4h.2a1.7 1.7 0 0 0 1.2-2.9l-.1-.1a1.7 1.7 0 1 1 2.4-2.4l.1.1a1.7 1.7 0 0 0 2.9-1.2V2a1.7 1.7 0 0 1 3.4 0v.2a1.7 1.7 0 0 0 2.9 1.2l.1-.1a1.7 1.7 0 1 1 2.4 2.4l-.1.1a1.7 1.7 0 0 0 1.2 2.9h.2a1.7 1.7 0 0 1 0 3.4h-.2a1.7 1.7 0 0 0-1.2 2.9Z"/>',cart:'<circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.7 13.4a2 2 0 0 0 2 1.6h9.7a2 2 0 0 0 2-1.6L23 6H6"/>',coins:'<ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v5c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 11v5c0 1.7 3.6 3 8 3 1.6 0 3.1-.2 4.4-.5M20 11v4"/><circle cx="19" cy="19" r="3"/>',person:'<circle cx="12" cy="8" r="4"/><path d="M5 21v-2a7 7 0 0 1 14 0v2"/>',cube:'<path d="m12 3 9 5-9 5-9-5 9-5ZM3 8v9l9 5 9-5V8M12 13v9"/>',search:'<circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/>',bell:'<path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/>',chevron:'<path d="m7 10 5 5 5-5"/>',arrow:'<path d="M5 12h14M13 6l6 6-6 6"/>',calendar:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 11h18"/>',menu:'<path d="M4 6h16M4 12h16M4 18h16"/>',close:'<path d="m6 6 12 12M18 6 6 18"/>',plus:'<path d="M12 5v14M5 12h14"/>',info:'<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/>',clock:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',gem:'<path d="M6 3h12l4 6-10 12L2 9zM2 9h20M8 3l4 18 4-18M6 3 2 9m16-6 4 6"/>',gift:'<rect x="3" y="9" width="18" height="12" rx="1"/><path d="M2 5h20v4H2zM12 5v16M12 5H8a2 2 0 1 1 2-2c0 1 2 2 2 2Zm0 0h4a2 2 0 1 0-2-2c0 1-2 2-2 2Z"/>',truck:'<path d="M3 6h11v12H3zM14 10h4l3 3v5h-7z"/><circle cx="7.5" cy="19" r="1.5"/><circle cx="17.5" cy="19" r="1.5"/>',
+};
+Object.assign(paths,{check:'<path d="m5 12 4 4L19 6"/>',print:'<path d="M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 14h12v7H6zM18 12h.01"/>',phone:'<path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.4 19.4 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 2 .7 2.9a2 2 0 0 1-.5 2.1L8 10a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.5c.9.3 1.9.6 2.9.7a2 2 0 0 1 1.7 2Z"/>'});
+Object.assign(paths,{image:'<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/>'});
+function Icon({name,className}:{name:string;className?:string}) { return <svg className={className} viewBox="0 0 24 24" aria-hidden="true" dangerouslySetInnerHTML={{__html:paths[name]||paths.box}}/>; }
+
+const seed:AdminData={products:[],orders:[],categories:[],customers:[],promotions:[],posts:[],materials:DEFAULT_MATERIALS};
+const materialsApiBase=apiBaseUrl;
+const apiBase=materialsApiBase;
+function fromApiMaterial(value:Row):MaterialOption{return normalizeMaterialOptions([{...value,scope:value.scope==="GEMSTONE"?"Đá quý":"Trang sức"}])[0];}
+function toApiMaterial(value:Partial<Omit<MaterialOption,"imageUrl">> & {imageUrl?:string|null},index=0){return {name:String(value.name||""),scope:value.scope==="Đá quý"?"GEMSTONE":"JEWELRY",kind:value.kind||"STONE",active:value.active!==false,imageUrl:value.imageUrl??null,sortOrder:Number(value.sortOrder??index),...(value.appliedCategoryIds!==undefined?{appliedCategoryIds:value.appliedCategoryIds}:{})};}
+function fromApiCategory(value:Row):AdminCategory{const kind=value.kind==="GEMSTONE"?"Đá quý":"Trang sức";return {id:String(value.id),name:String(value.name||""),slug:String(value.slug||""),products:Number(value._count?.products)||0,status:value.status==="INACTIVE"?"Đã ẩn":"Hoạt động",kind,usage:value.usage==="GEMSTONE_TYPE"?"stone":"product",level:(Number(value.level)||1) as 1|2|3,pricingMode:kind==="Đá quý"&&value.pricingMode==="QUALITY"?"GEMSTONE_SIZE":value.pricingMode||"FIXED",parentId:value.parentId||undefined,description:value.description||"",sortOrder:String(value.sortOrder??0),image:value.imageUrl||"",bannerUrl:value.bannerUrl||"",seoTitle:value.seoTitle||"",seoDescription:value.seoDescription||"",isHot:Boolean(value.isHot)};}
+function toApiCategory(value:AdminCategory){return {name:value.name,slug:value.slug,kind:value.kind==="Đá quý"?"GEMSTONE":"JEWELRY",usage:value.usage==="stone"?"GEMSTONE_TYPE":"PRODUCT_CATEGORY",level:value.level??(value.parentId?2:1),pricingMode:value.pricingMode||"FIXED",parentId:value.parentId||null,description:value.description||null,status:value.status==="Đã ẩn"?"INACTIVE":"ACTIVE",sortOrder:Number(value.sortOrder)||0,imageUrl:value.image||null,bannerUrl:value.bannerUrl||null,seoTitle:value.seoTitle||null,seoDescription:value.seoDescription||null,isHot:Boolean(value.isHot)};}
+function fromApiProduct(value:Row):Product{const category=value.category;const gemstoneTypeId=value.gemstoneTypeId||(value.kind==="GEMSTONE"?(Number(category?.level)===2?category.id:category?.parentId||undefined):undefined);const categoryName=value.kind==="GEMSTONE"?(value.gemstoneType?.name||category?.name||""):(category?.name||"");const images=Array.isArray(value.images)?value.images.map((image:Row)=>image.url).filter(Boolean):[];const variants=Array.isArray(value.variants)?value.variants.map((item:Row)=>({id:String(item.id||""),sku:item.sku||null,quality:item.quality,beadSize:item.beadSize||undefined,carat:item.carat==null?null:Number(item.carat),gemstoneQuality:item.gemstoneQuality||null,price:Number(item.price)||0,originalPrice:Number(item.originalPrice)||undefined,stock:Number(item.stock)||0,imageUrls:Array.isArray(item.imageUrls)?item.imageUrls.filter((url:unknown)=>typeof url==="string"):[],videoUrl:item.videoUrl||null})):[];return {id:String(value.sku),apiId:String(value.id),name:String(value.name||""),price:Number(value.price)||variants.reduce((min:number,row:ProductPriceVariant)=>min?Math.min(min,row.price):row.price,0),originalPrice:Number(value.originalPrice)||0,stock:Number(value.stock)||variants.reduce((sum:number,row:ProductPriceVariant)=>sum+row.stock,0),status:value.status==="ACTIVE"?"Đang hoạt động":value.status==="HIDDEN"?"Tạm ẩn":value.status==="ARCHIVED"?"Đã gỡ bài":"Bản nháp",isNew:Boolean(value.isNew),productType:value.kind==="GEMSTONE"?"Đá quý":"Trang sức",category:categoryName,categoryId:String(value.categoryId||""),materialOptionId:value.materialOptionId||undefined,gemstoneTypeId:gemstoneTypeId||undefined,categoryPricingMode:value.kind==="GEMSTONE"&&category?.pricingMode==="QUALITY"?"GEMSTONE_SIZE":category?.pricingMode||"FIXED",subcategory:value.kind==="GEMSTONE"?"":value.materialOption?.name||"",description:value.description||"",fullDescription:value.fullDescription||"",image:images[0]||"",gallery:images,coverVideoUrl:String(value.coverVideoUrl||""),technicalImage:String(value.technicalImageUrl||""),technicalVideo:String(value.technicalVideoUrl||""),weightGrams:value.weightGrams==null?undefined:Number(value.weightGrams),lengthCm:value.lengthCm==null?undefined:Number(value.lengthCm),widthCm:value.widthCm==null?undefined:Number(value.widthCm),heightCm:value.heightCm==null?undefined:Number(value.heightCm),qualityGrades:[...new Set(variants.map(row=>row.quality))],beadSizes:[...new Set(variants.map(row=>row.beadSize).filter(Boolean))] as string[],priceVariants:variants,seoTitle:value.seoTitle||"",seoDescription:value.seoDescription||"",sold:0,revenue:0};}
+function toApiProduct(value:Product,publish?:boolean){const gemstone=value.productType==="Đá quý";return {sku:value.id,name:value.name,kind:gemstone?"GEMSTONE":"JEWELRY",categoryId:gemstone?value.gemstoneTypeId||value.categoryId:value.categoryId,gemstoneTypeId:gemstone?value.gemstoneTypeId||value.categoryId:null,materialOptionId:value.materialOptionId||null,description:value.description||null,fullDescription:value.fullDescription||null,coverVideoUrl:value.coverVideoUrl||null,technicalImageUrl:value.technicalImage||null,technicalVideoUrl:value.technicalVideo||null,weightGrams:value.weightGrams??null,lengthCm:value.lengthCm??null,widthCm:value.widthCm??null,heightCm:value.heightCm??null,status:publish===false||value.status==="Bản nháp"?"DRAFT":value.status==="Tạm ẩn"?"HIDDEN":"ACTIVE",isNew:Boolean(value.isNew),price:value.price,originalPrice:value.originalPrice||null,seoTitle:value.seoTitle||null,seoDescription:value.seoDescription||null,gallery:value.gallery?.length?value.gallery:value.image?[value.image]:[],priceVariants:(value.priceVariants||[]).map((variant)=>({sku:variant.sku,quality:variant.quality,beadSize:variant.beadSize,carat:variant.carat,gemstoneQuality:variant.gemstoneQuality,price:variant.price,originalPrice:variant.originalPrice,imageUrls:variant.imageUrls||[],videoUrl:variant.videoUrl||null}))};}
+function fromApiCustomer(value:Row):Row{return {id:String(value.id),apiId:String(value.id),name:value.name||"",email:value.email||"",phone:value.phone||"",orders:Number(value._count?.orders)||0,total:(value.orders||[]).reduce((sum:number,order:Row)=>sum+Number(order.totalAmount||0),0),status:value.status==="INACTIVE"?"Inactive":"Active",segment:value.segment||"Khách mới",joined:value.createdAt?new Date(value.createdAt).toLocaleDateString("vi-VN"):"",address:value.defaultAddress||"",note:value.note||"",reviews:Number(value._count?.reviews)||0,history:(value.orders||[]).map((order:Row)=>({id:order.code,date:new Date(order.placedAt).toLocaleDateString("vi-VN"),product:order.items?.map((item:Row)=>item.productName).join(", ")||"Đơn hàng",image:order.items?.[0]?.product?.images?.[0]?.url||"",price:Number(order.totalAmount)||0,status:order.status})),avatar:value.avatarUrl||""};}
+const orderStatusUi:Record<string,string>={PENDING_CONFIRMATION:"Chờ xác nhận",PROCESSING:"Đang xử lý",SHIPPING:"Đang giao",DELIVERED:"Đã giao",CANCELLED:"Đã hủy"};
+function fromApiOrder(value:Row):Order{
+  const rawItems=Array.isArray(value.items)?value.items:[];
+  const items:OrderReceiptLine[]=rawItems.map((item:Row,index:number)=>({id:String(item.id||index),productName:String(item.productName||"Sản phẩm"),productSku:String(item.productSku||"—"),quality:item.quality||null,beadSize:item.beadSize||null,quantity:Number(item.quantity)||0,unitPrice:Number(item.unitPrice)||0,lineTotal:Number(item.lineTotal)||0,image:item.product?.images?.[0]?.url||"",weightGrams:item.product?.weightGrams==null?null:Number(item.product.weightGrams)}));
+  const first=rawItems[0];
+  const method=value.payments?.[0]?.method||"COD";
+  const storeSale=value.shippingMethod==="Bán trực tiếp tại cửa hàng";
+  const subtotal=Number(value.subtotal)||items.reduce((sum,item)=>sum+item.lineTotal,0);
+  return {id:String(value.code),apiId:String(value.id),customer:value.customerName||value.customer?.name||"",phone:value.customerPhone||value.customer?.phone||"",email:value.customerEmail||value.customer?.email||"",product:first?.productName||"",sku:first?.productSku||"",quantity:items.reduce((sum,item)=>sum+item.quantity,0),subtotal,discountAmount:Number(value.discountAmount)||0,shippingFee:Number(value.shippingFee)||0,total:Number(value.totalAmount)||0,payment:method==="COD"?(storeSale?"Tiền mặt tại quầy":"COD (thu khi giao)"):method,paymentStatus:String(value.payments?.[0]?.status||"PENDING"),shipping:String(value.shippingMethod||""),address:String(value.shippingAddress||""),trackingCode:String(value.trackingCode||""),shippingProvider:value.shippingProvider||null,shippingServiceCode:value.shippingServiceCode||null,carrierShipmentStatus:value.carrierShipmentStatus||null,carrierShipmentError:value.carrierShipmentError||null,carrierFreightPayment:value.carrierFreightPayment||null,carrierCodAmount:value.carrierCodAmount==null?null:Number(value.carrierCodAmount),carrierStatusCode:value.carrierStatusCode==null?null:Number(value.carrierStatusCode),carrierStatusName:value.carrierStatusName||null,carrierStatusAt:value.carrierStatusAt||null,carrierLocation:value.carrierLocation||null,carrierFee:value.carrierFee==null?null:Number(value.carrierFee),status:orderStatusUi[value.status]||String(value.status||""),time:new Date(value.placedAt).toLocaleTimeString("vi-VN",{hour:"2-digit",minute:"2-digit"}),date:new Date(value.placedAt).toLocaleDateString("vi-VN"),placedAt:value.placedAt?String(value.placedAt):undefined,note:String(value.note||""),items};
+}
+function promotionDateTimeParts(value:unknown){const date=new Date(String(value||""));if(Number.isNaN(date.getTime()))return {date:"",time:""};return {date:date.toLocaleDateString("vi-VN",{timeZone:"Asia/Ho_Chi_Minh"}),time:date.toLocaleTimeString("vi-VN",{timeZone:"Asia/Ho_Chi_Minh",hour:"2-digit",minute:"2-digit",hourCycle:"h23"})};}
+function promotionLocalTimeToIso(dateValue:unknown,timeValue:unknown){const match=String(dateValue||"").match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);const time=String(timeValue||"").match(/^(\d{1,2}):(\d{2})$/);if(!match||!time)return undefined;const [,day,month,year]=match;const local=`${year}-${month.padStart(2,"0")}-${day.padStart(2,"0")}T${time[1].padStart(2,"0")}:${time[2]}:00+07:00`;const parsed=new Date(local);return Number.isNaN(parsed.getTime())?undefined:parsed.toISOString();}
+function fromApiPromotion(value:Row):Row{const labels:Record<string,string>={PERCENTAGE:"Giảm giá %",FIXED_AMOUNT:"Giảm giá theo tiền",FREE_SHIPPING:"Miễn phí ship",GIFT:"Quà tặng",POINTS:"Tích điểm"};const states:Record<string,string>={ACTIVE:"Đang diễn ra",SCHEDULED:"Sắp diễn ra",ENDED:"Đã kết thúc",PAUSED:"Tạm dừng",DRAFT:"Tạm dừng"};const targets=value.targets||[];const productTargets=targets.filter((target:Row)=>target.productId);const categoryTarget=targets.find((target:Row)=>target.categoryId&&!target.excluded);const starts=promotionDateTimeParts(value.startsAt);const ends=promotionDateTimeParts(value.endsAt);return {...value,apiId:String(value.id),type:labels[value.type]||value.type,discount:value.type==="PERCENTAGE"?`${Number(value.value)||0}%`:value.type==="FREE_SHIPPING"?"Miễn phí ship":`${new Intl.NumberFormat("vi-VN").format(Number(value.value)||0)}₫`,startDate:starts.date,startTime:starts.time,endDate:ends.date,endTime:ends.time,status:states[value.status]||value.status,uses:Number(value._count?.usages)||0,image:value.imageUrl||"",visible:Boolean(value.visible),conditions:Array.isArray(value.conditions)?value.conditions:[],categoryId:categoryTarget?.categoryId||"",categoryScope:Boolean(categoryTarget),productIds:productTargets.filter((target:Row)=>!target.excluded).map((target:Row)=>target.productId),excludedProductIds:productTargets.filter((target:Row)=>target.excluded).map((target:Row)=>target.productId),products:targets.map((target:Row)=>target.product?.name||target.category?.name).filter(Boolean),history:[]};}
+function toApiPromotion(value:Row){const types:Record<string,string>={"Giảm giá %":"PERCENTAGE","Giảm giá theo tiền":"FIXED_AMOUNT","Miễn phí ship":"FREE_SHIPPING","Quà tặng":"GIFT","Tích điểm":"POINTS"};const statuses:Record<string,string>={"Đang diễn ra":"ACTIVE","Sắp diễn ra":"SCHEDULED","Đã kết thúc":"ENDED","Tạm dừng":"PAUSED"};const parse=(date:string)=>{const [day,month,year]=String(date||"").split("/");return year?`${year}-${month}-${day}`:date;};const discount=String(value.discount||"").replace(/[^0-9.]/g,"");return {name:value.name,description:value.description,type:types[value.type]||"PERCENTAGE",code:value.code||null,value:Number(discount)||null,startsAt:promotionLocalTimeToIso(value.startDate,value.startTime)||value.startsAt||parse(value.startDate),endsAt:promotionLocalTimeToIso(value.endDate,value.endTime)||value.endsAt||parse(value.endDate),status:statuses[value.status]||"DRAFT",usageLimit:Number(value.codeLimit)||null,autoEndAtLimit:Boolean(value.autoEnd),minimumOrder:Number(value.minOrder)||null,visible:value.visible!==false,conditions:value.conditions||[],category:value.categoryScope?value.categoryId||null:null,categoryIds:value.categoryScope&&value.categoryId?[value.categoryId]:[],productIds:value.productIds||[],excludedProductIds:value.excludedProductIds||[],products:value.products||[]};}
+function fromApiPost(value:Row):Row{const images=(value.images||[]).map((image:Row)=>image.url).filter(Boolean);const coverImageUrl=value.coverImageUrl||images[0]||"";return {...value,apiId:String(value.id),name:value.title,category:value.category||"",tags:value.tags||[],author:value.author?.displayName||"Admin",date:value.publishedAt?new Date(value.publishedAt).toLocaleDateString("vi-VN"):"",status:value.status==="PUBLISHED"?"Đã xuất bản":value.status==="SCHEDULED"?"Đã lên lịch":"Bản nháp",summary:value.summary||"",coverImageUrl,images:images.length?images:coverImageUrl?[coverImageUrl]:[]};}
+function toApiPost(value:Row){return {title:value.name,slug:value.slug||undefined,summary:value.summary,category:value.category,tags:value.tags,content:value.content,coverImageUrl:value.coverImageUrl||value.images?.[0]||null,images:value.images,status:value.status==="Đã xuất bản"?"PUBLISHED":value.status==="Đã lên lịch"?"SCHEDULED":"DRAFT",seoTitle:value.seoTitle,seoDescription:value.seoDescription};}
+const menu:{key:ViewKey;label:string;icon:string;badge?:string;chevron?:boolean}[]=[{key:'overview',label:'Tổng quan',icon:'home'},{key:'orders',label:'Đơn hàng',icon:'bag',chevron:true},{key:'shipping',label:'Quản lý giao hàng',icon:'truck'},{key:'products',label:'Sản phẩm',icon:'box',chevron:true},{key:'customers',label:'Khách hàng',icon:'users'},{key:'inventory',label:'Quản lý tồn kho',icon:'inventory',chevron:true},{key:'reports',label:'Báo cáo',icon:'chart',chevron:true},{key:'settings',label:'Cài đặt',icon:'settings'}];
+const viewMeta:Record<string,{title:string;description:string}>={overview:{title:'Tổng quan',description:'Tổng quan hoạt động của cửa hàng.'},orders:{title:'Đơn hàng',description:'Theo dõi và cập nhật trạng thái các đơn hàng.'},shipping:{title:'Quản lý giao hàng',description:'Chuẩn bị kiện hàng, tạo vận đơn Viettel Post và theo dõi hành trình giao.'},products:{title:'Sản phẩm',description:'Danh mục sản phẩm GEME, SKU, giá và tình trạng hàng.'},materials:{title:'Loại đá',description:'Quản lý riêng loại đá cho trang sức và mặt đá quý.'},productCreate:{title:'Thêm sản phẩm',description:'Tạo hồ sơ sản phẩm GEME và cấu hình SKU trong kho.'},categories:{title:'Danh mục',description:'Tổ chức sản phẩm theo nhóm để khách dễ tìm kiếm.'},customers:{title:'Khách hàng',description:'Thông tin khách hàng và lịch sử mua sắm.'},promotionCreate:{title:'Tạo khuyến mãi',description:'Lập chương trình khuyến mãi cho cửa hàng GEME.'},promotions:{title:'Khuyến mãi',description:'Quản lý mã ưu đãi đang áp dụng cho cửa hàng.'},posts:{title:'Bài viết / Blog',description:'Quản lý bài viết, chủ đề và trạng thái xuất bản.'},blogEditor:{title:'Trình soạn thảo blog',description:'Soạn bài viết cho GEME Journal.'},inventory:{title:'Quản lý tồn kho',description:'Theo dõi số lượng, nhập/xuất và lịch sử trong kho.'},reports:{title:'Báo cáo',description:'Tổng hợp hoạt động kinh doanh theo thời gian.'},revenue:{title:'Báo cáo theo doanh thu',description:'Theo dõi doanh thu và hiệu quả kinh doanh theo thời gian.'},settings:{title:'Cài đặt',description:'Cấu hình thông tin hiển thị cơ bản cho cửa hàng.'}};
+viewMeta.pricing={title:'Hồ sơ giá',description:'Quản lý bảng giá chuẩn theo SKU và biến thể trong GEME.'};
+const money=(n:number|string)=>new Intl.NumberFormat('vi-VN').format(Number(n)||0)+' ₫';
+function statusClass(value:string){return /Đã giao|Đang bán|Đang hoạt động|Đang hiển thị|Đã xuất bản|Thành viên|Hoàn tất|Còn hàng/i.test(value)?'green':/Chờ|Đang xử lý|Đang áp dụng|Bản nháp|Tạm ẩn|Sắp hết/i.test(value)?'amber':/Đang giao/i.test(value)?'blue':'red';}
+function Pill({children}:{children:string}){return <span className={`status-pill ${statusClass(children)}`}>{children}</span>;}
+function Thumb({index=0}:{index?:number}){const colors=['#9274a2','#aab9c2','#779b82','#c3a176','#a36561'];return <span className="product-thumb" style={{color:colors[index%colors.length]}}><Icon name="gem"/></span>;}
+function PageTitle({view,children}:{view:ViewKey;children?:React.ReactNode}){return <div className={`page-heading${view==='overview'?' dashboard-heading':''}`}><div>{view==='overview'&&<span className="dashboard-eyebrow">CHERYLISH / ADMIN</span>}<h1>{viewMeta[view].title}</h1><p>{viewMeta[view].description}</p></div>{children}</div>;}
+
+const fieldDefs:Record<GeneralFormView,FieldDefinition[]>={products:[{key:'id',label:'Mã sản phẩm'},{key:'name',label:'Tên sản phẩm'},{key:'price',label:'Giá bán (₫)',numeric:true},{key:'status',label:'Trạng thái'}],categories:[{key:'name',label:'Tên danh mục'},{key:'slug',label:'Đường dẫn (slug)'},{key:'products',label:'Số sản phẩm',numeric:true},{key:'status',label:'Trạng thái'}],customers:[{key:'id',label:'Mã khách hàng'},{key:'name',label:'Họ tên'},{key:'phone',label:'Số điện thoại'},{key:'email',label:'Email',type:'email'},{key:'orders',label:'Số đơn hàng',numeric:true},{key:'total',label:'Tổng chi tiêu (₫)',numeric:true}],promotions:[{key:'code',label:'Mã ưu đãi'},{key:'name',label:'Tên chương trình'},{key:'discount',label:'Mức ưu đãi'},{key:'uses',label:'Lượt dùng',numeric:true},{key:'expiry',label:'Hạn sử dụng'}],posts:[{key:'name',label:'Tiêu đề bài viết'},{key:'category',label:'Danh mục'},{key:'date',label:'Ngày đăng'}]};
+
+export default function AdminShell(){
+  const [view,setView]=useState<ViewKey>('overview');
+  const [data,setData]=useState<AdminData>(seed);
+  const [siteSettings,setSiteSettings]=useState<Record<string,any>>({storeName:'GEME',supportEmail:'',phone:'',address:''});
+  const [blogCategories,setBlogCategories]=useState<string[]>([]);
+  const [blogPostDraft,setBlogPostDraft]=useState<Row|null>(null);
+  const [apiStatus,setApiStatus]=useState<"connecting"|"connected"|"offline">("connecting");
+  const [catalogSyncStatus,setCatalogSyncStatus]=useState<MaterialSyncStatus>('connecting');
+  const [search,setSearch]=useState('');
+  const [tableSearch,setTableSearch]=useState('');
+  const [menuOpen,setMenuOpen]=useState(false);
+  const menuButtonRef=useRef<HTMLButtonElement>(null);
+  const drawerWasOpen=useRef(false);
+  const [adminProfile,setAdminProfile]=useState<{displayName?:string;role?:string}|null>(null);
+  const [expandedMenus,setExpandedMenus]=useState<Partial<Record<ViewKey,boolean>>>({});
+  const [toast,setToast]=useState('');
+  const [formView,setFormView]=useState<GeneralFormView|null>(null);
+  const [editing,setEditing]=useState<Row|null>(null);
+  const [draft,setDraft]=useState<Record<string,string>>({});
+  const [selectedOrderId,setSelectedOrderId]=useState('');
+  const [receiptOrderId,setReceiptOrderId]=useState('');
+  const [selectedOrderRows,setSelectedOrderRows]=useState<string[]>([]);
+  const [statusFilter,setStatusFilter]=useState('');
+  const [paymentFilter,setPaymentFilter]=useState('');
+  const [shippingFilter,setShippingFilter]=useState('');
+  const [orderDateFrom,setOrderDateFrom]=useState('');
+  const [orderDateTo,setOrderDateTo]=useState('');
+  const [productCategoryPreset,setProductCategoryPreset]=useState<AdminCategory>();
+  const [dashboardReport,setDashboardReport]=useState<DashboardReport|null>(null);
+  const [dashboardReportStatus,setDashboardReportStatus]=useState<"loading"|"loaded"|"error">("loading");
+  const loadedCollections=useRef(new Set<string>());
+  const collectionRequests=useRef(new Map<string,Promise<void>>());
+  const settingsRequest=useRef<Promise<void>|null>(null);
+  const dashboardReportLoadedAt=useRef(0);
+  const dashboardReportRequest=useRef<Promise<void>|null>(null);
+  const currentView=useRef(view);
+  currentView.current=view;
+  useEffect(()=>{let active=true;void fetch('/api/admin/auth/me',{cache:'no-store'}).then(response=>response.ok?response.json():null).then(profile=>{if(active&&profile&&typeof profile==='object')setAdminProfile(profile);}).catch(()=>{});return()=>{active=false;};},[]);
+  useEffect(()=>{if(!menuOpen){if(drawerWasOpen.current)menuButtonRef.current?.focus();drawerWasOpen.current=false;return;}drawerWasOpen.current=true;const onKeyDown=(event:KeyboardEvent)=>{if(event.key==='Escape'){setMenuOpen(false);menuButtonRef.current?.focus();}};document.addEventListener('keydown',onKeyDown);document.body.style.overflow='hidden';return()=>{document.removeEventListener('keydown',onKeyDown);document.body.style.overflow='';};},[menuOpen]);
+  useEffect(()=>{
+    let alive=true;
+    const get=async(path:string)=>{const response=await fetch(`${apiBase}/${path}`,{cache:'no-store'});if(!response.ok)throw new Error(`GET ${path} failed (${response.status})`);return response.json();};
+    void get('categories').then((categories)=>{
+      if(!alive)return;
+      loadedCollections.current.add('categories');
+      setData(old=>({...old,categories:(categories as Row[]).map(fromApiCategory)}));
+      setApiStatus('connected');setCatalogSyncStatus('connected');
+    }).catch(()=>{if(alive){setApiStatus('offline');setCatalogSyncStatus('offline');}});
+    const events=new EventSource(`${apiBase}/materials/events`);
+    events.onmessage=(event)=>{try{const records=JSON.parse(event.data) as Row[];if(alive){loadedCollections.current.add('materials');setData(old=>({...old,materials:records.map(fromApiMaterial)}));setCatalogSyncStatus('connected');}}catch{ /* ignore malformed server events */ }};
+    return()=>{alive=false;events.close();};
+  },[]);
+  useEffect(()=>{if(!toast)return;const timer=window.setTimeout(()=>setToast(''),2600);return()=>window.clearTimeout(timer);},[toast]);
+  useEffect(()=>{if(!selectedOrderId||view!=='orders'||window.innerWidth>1080)return;document.querySelector('.order-drawer')?.scrollIntoView({behavior:'smooth',block:'start'});},[selectedOrderId,view]);
+  const rows=useMemo<Row[]>(()=>(['products','orders','categories','customers'].includes(view)?data[view as keyof AdminData] as Row[]:[]),[data,view]);
+  const filteredRows=useMemo(()=>rows.filter(row=>Object.values(row).some(value=>String(value).toLocaleLowerCase('vi').includes(tableSearch.toLocaleLowerCase('vi'))||String(value).toLocaleLowerCase('vi').includes(search.toLocaleLowerCase('vi')))),[rows,tableSearch,search]);
+  const orderRows=useMemo(()=>data.orders.filter(order=>{const orderDay=order.placedAt&&!Number.isNaN(new Date(order.placedAt).getTime())?new Date(order.placedAt).toISOString().slice(0,10):'';return (!statusFilter||order.status===statusFilter)&&(!paymentFilter||order.payment===paymentFilter)&&(!shippingFilter||order.shipping.toLowerCase().includes(shippingFilter.toLowerCase()))&&(!orderDateFrom||Boolean(orderDay&&orderDay>=orderDateFrom))&&(!orderDateTo||Boolean(orderDay&&orderDay<=orderDateTo))&&(!search||`${order.id} ${order.customer} ${order.phone} ${order.product} ${order.sku||''} ${(order.items||[]).map((item:OrderReceiptLine)=>item.productSku||'').join(' ')}`.toLocaleLowerCase('vi').includes(search.toLocaleLowerCase('vi')));}),[data.orders,statusFilter,paymentFilter,shippingFilter,orderDateFrom,orderDateTo,search]);
+  const selectedOrder=data.orders.find(order=>order.id===selectedOrderId);
+  const selectedReceiptOrder=data.orders.find(order=>order.id===receiptOrderId);
+  const notify=(text:string)=>setToast(text);
+  const apiRequest=async(path:string,method='GET',body?:unknown)=>{const endpoint=`${apiBase}/${path}`;const response=await fetch(endpoint,{method,headers:body===undefined?undefined:{'Content-Type':'application/json'},body:body===undefined?undefined:JSON.stringify(body)});if(!response.ok){let message=`API trả về lỗi ${response.status}.`;try{const detail=await response.json();message=Array.isArray(detail.message)?detail.message.join(' '):detail.message||message;}catch{}throw new Error(message);}return method==='DELETE'?null:response.json();};
+  const loadCollection=(cacheKey:string,destination:keyof AdminData,path:string,mapper:(record:Row)=>any,force=false)=>{
+    if(!force&&(loadedCollections.current.has(cacheKey)||(cacheKey.startsWith('dashboard:')&&loadedCollections.current.has(destination))))return Promise.resolve();
+    const existing=collectionRequests.current.get(cacheKey);
+    if(existing)return existing;
+    const request=fetch(`${apiBase}/${path}`,{cache:'no-store'}).then(async response=>{
+      if(!response.ok)throw new Error(`GET ${path} failed (${response.status})`);
+      return response.json() as Promise<Row[]>;
+    }).then(records=>{
+      if(!Array.isArray(records))throw new Error(`GET ${path} returned invalid data`);
+      loadedCollections.current.add(cacheKey);
+      const visibleRecords=destination==='products'?records.filter(record=>record.status!=="ARCHIVED"):records;
+      setData(old=>({...old,[destination]:visibleRecords.map(mapper)}));
+    }).finally(()=>collectionRequests.current.delete(cacheKey));
+    collectionRequests.current.set(cacheKey,request);
+    return request;
+  };
+  const loadAdminSettings=()=>{
+    if(loadedCollections.current.has('settings'))return Promise.resolve();
+    if(settingsRequest.current)return settingsRequest.current;
+    const request=fetch(`${apiBase}/settings`,{cache:'no-store'}).then(async response=>{
+      if(!response.ok)throw new Error('Không đọc được cài đặt cửa hàng.');
+      return response.json() as Promise<Row>;
+    }).then(settings=>{
+      loadedCollections.current.add('settings');
+      setSiteSettings({storeName:String(settings.storeName||'GEME'),supportEmail:String(settings.supportEmail||''),phone:String(settings.phone||''),address:String(settings.address||'')});
+      setBlogCategories(Array.isArray(settings.blogCategories)?settings.blogCategories.filter((item:unknown)=>typeof item==='string'):[]);
+    }).finally(()=>{settingsRequest.current=null;});
+    settingsRequest.current=request;
+    return request;
+  };
+  useEffect(()=>{
+    if(apiStatus!=='connected')return;
+    const quietLoad=(key:string,destination:keyof AdminData,path:string,mapper:(record:Row)=>any)=>{
+      void loadCollection(key,destination,path,mapper).catch(error=>notify(error instanceof Error?error.message:'Không thể tải dữ liệu quản trị.'));
+    };
+    if(view==='overview'){
+      quietLoad('dashboard:products','products','admin/products?all=true&limit=5&view=admin-list',fromApiProduct);
+      quietLoad('dashboard:orders','orders','orders?limit=5&view=admin-summary',fromApiOrder);
+    }else if(view==='products'||view==='productCreate'||view==='pricing')quietLoad('products','products','admin/products?all=true',fromApiProduct);
+    else if(view==='orders'||view==='shipping')quietLoad('orders','orders','orders',fromApiOrder);
+    else if(view==='orderCreate'){
+      quietLoad('products','products','admin/products?all=true',fromApiProduct);
+      quietLoad('customers','customers','customers',fromApiCustomer);
+    }else if(view==='customers')quietLoad('customers','customers','customers',fromApiCustomer);
+    if(view==='settings')void loadAdminSettings().catch(()=>notify('Không đọc được cài đặt cửa hàng.'));
+  },[view,apiStatus]);
+  useEffect(()=>{
+    if(!["overview","reports","revenue"].includes(view)||apiStatus!=="connected")return;
+    if(dashboardReportLoadedAt.current&&Date.now()-dashboardReportLoadedAt.current<30_000){setDashboardReportStatus("loaded");return;}
+    setDashboardReportStatus("loading");
+    if(!dashboardReportRequest.current){
+      const request=fetch(`${apiBase}/reports/overview`,{cache:"no-store"}).then(async(response)=>{
+        if(!response.ok)throw new Error(`GET reports/overview failed (${response.status})`);
+        return response.json() as Promise<DashboardReport>;
+      }).then((report)=>{dashboardReportLoadedAt.current=Date.now();setDashboardReport(report);setDashboardReportStatus("loaded");}).catch(()=>{setDashboardReportStatus("error");}).finally(()=>{dashboardReportRequest.current=null;});
+      dashboardReportRequest.current=request;
+    }
+  },[view,apiStatus]);
+  useEffect(()=>{
+    let alive=true;
+    let refreshTimer:number|undefined;
+    const events=new EventSource(`${apiBase}/products/events`);
+    events.onmessage=(event)=>{
+      let change:Row;
+      try{change=JSON.parse(event.data) as Row;}catch{return;}
+      if(change.entity!=="product")return;
+      const fullWasLoaded=loadedCollections.current.has('products');
+      const previewWasLoaded=loadedCollections.current.has('dashboard:products');
+      if(refreshTimer)window.clearTimeout(refreshTimer);
+      refreshTimer=window.setTimeout(()=>{
+        if(!alive)return;
+        const active=currentView.current;
+        const needsFullProducts=['products','productCreate','pricing','orderCreate','promotionCreate'].includes(active);
+        const needsPreview=active==='overview';
+        const key=needsFullProducts?'products':'dashboard:products';
+        const route=needsFullProducts?'admin/products?all=true':'admin/products?all=true&limit=5&view=admin-list';
+        const hasCurrentList=needsFullProducts?fullWasLoaded:previewWasLoaded;
+        if(change.id&&hasCurrentList&&(needsFullProducts||needsPreview)){
+          void fetch(`${apiBase}/products/${encodeURIComponent(String(change.id))}`,{cache:'no-store'}).then(async response=>{
+            if(response.status===404)return null;
+            if(!response.ok)throw new Error(`GET products/${change.id} failed (${response.status})`);
+            return response.json() as Promise<Row>;
+          }).then(record=>{
+            if(!alive)return;
+            if(!record||record.status==='ARCHIVED'){
+              setData(old=>({...old,products:old.products.filter(item=>item.apiId!==String(change.id))}));
+            }else{
+              const mapped=fromApiProduct(record);
+              setData(old=>{
+                const exists=old.products.some(item=>item.apiId===mapped.apiId);
+                const products=exists?old.products.map(item=>item.apiId===mapped.apiId?mapped:item):change.action==='created'?[mapped,...old.products].slice(0,needsPreview?5:undefined):old.products;
+                return {...old,products};
+              });
+            }
+            loadedCollections.current.add(key);
+            loadedCollections.current.delete(needsFullProducts?'dashboard:products':'products');
+          }).catch(()=>{
+            loadedCollections.current.delete(key);
+            if(needsFullProducts||needsPreview)void loadCollection(key,'products',route,fromApiProduct,true).catch(()=>{});
+          });
+          return;
+        }
+        loadedCollections.current.delete('products');
+        loadedCollections.current.delete('dashboard:products');
+        if(needsFullProducts||needsPreview)void loadCollection(key,'products',route,fromApiProduct,true).catch(()=>{});
+      },120);
+    };
+    return()=>{alive=false;events.close();if(refreshTimer)window.clearTimeout(refreshTimer);};
+  },[]);
+  const openBlogEditor=(post?:Row)=>{setBlogPostDraft(post?{...post}:null);setView('blogEditor');setMenuOpen(false);window.scrollTo({top:0,behavior:'smooth'});};
+  const saveBlogCategory=async(name:string)=>{const normalized=name.trim();const existing=blogCategories.find((category)=>category.toLocaleLowerCase('vi')===normalized.toLocaleLowerCase('vi'));if(existing)return blogCategories;const next=[...blogCategories,normalized];await apiRequest('settings','PATCH',{blogCategories:next});setBlogCategories(next);return next;};
+  const saveBlogPost=async(post:Row)=>{const id=post.apiId?encodeURIComponent(String(post.apiId)):'';const saved=await apiRequest(`blog${id?`/${id}`:''}`,id?'PATCH':'POST',toApiPost(post)) as Row;const mapped=fromApiPost(saved);setData(old=>({...old,posts:id?old.posts.map(item=>item.apiId===mapped.apiId?mapped:item):[mapped,...old.posts]}));setView('posts');setBlogPostDraft(null);setMenuOpen(false);window.scrollTo({top:0,behavior:'smooth'});notify(mapped.status==='Đã xuất bản'?'Bài viết đã xuất bản và lưu vào database.':'Bản nháp đã lưu vào database.');};
+  const persistCollection=async(kind:'categories'|'promotions'|'posts',current:Row[],next:Row[])=>{
+    const route=kind==='posts'?'blog':kind;
+    const normalize=(rows:Row[])=>kind==='categories'?rows.map(fromApiCategory):kind==='promotions'?rows.map(fromApiPromotion):rows.map(fromApiPost);
+    const encode=(row:Row)=>kind==='categories'?toApiCategory(row as AdminCategory):kind==='promotions'?toApiPromotion(row):toApiPost(row);
+    const keyOf=(row:Row)=>String(row.apiId||row.id||row.code||row.slug||row.name);
+    const oldById=new Map(current.filter(row=>row.apiId||row.id).map(row=>[keyOf(row),row]));
+    const nextIds=new Set(next.filter(row=>row.apiId||row.id).map(keyOf));
+    for(const old of current){if((old.apiId||old.id)&&!nextIds.has(keyOf(old))){if(kind!=='categories')await apiRequest(`${route}/${encodeURIComponent(String(old.apiId||old.id))}`,'DELETE');}}
+    for(const row of next){
+      const old=row.apiId||row.id?oldById.get(keyOf(row)):undefined;
+      if(!old){const saved=await apiRequest(route,'POST',encode(row));if(kind==='categories')row.apiId=String(saved.id);}
+      else {const before=JSON.stringify(encode(old));const after=JSON.stringify(encode(row));if(before!==after)await apiRequest(`${route}/${encodeURIComponent(String(old.apiId||old.id))}`,'PATCH',encode(row));}
+    }
+    const remote=await apiRequest(kind==='categories'?route:kind==='promotions'?route:'admin/blog?all=true') as Row[];
+    const mapped=normalize(remote);
+    setData(old=>({...old,[kind]:mapped}));
+    return mapped;
+  };
+  const persistProduct=async(product:Product,publish?:boolean)=>{
+    const uploadImage=async(value:string|undefined,filename:string):Promise<string>=>{
+      if(!value?.startsWith('data:image/'))return value||'';
+      const comma=value.indexOf(',');
+      if(comma<0)throw new Error('Dữ liệu ảnh sản phẩm không hợp lệ.');
+      const mimeType=value.slice(5,value.indexOf(';'));
+      const asset=await apiRequest('media','POST',{filename,mimeType,base64:value.slice(comma+1),alt:product.name}) as Row;
+      if(typeof asset.url!=='string'||!asset.url)throw new Error('Không nhận được đường dẫn ảnh đã lưu trong thư viện media.');
+      return asset.url;
+    };
+    const sourceGallery=product.gallery?.length?product.gallery:product.image?[product.image]:[];
+    const gallery=await Promise.all(sourceGallery.slice(0,10).map((image,index)=>uploadImage(image,`product-${product.id}-${index+1}.webp`)));
+    const technicalImage=await uploadImage(product.technicalImage,`product-${product.id}-technical.webp`);
+    const priceVariants=await Promise.all((product.priceVariants||[]).map(async(variant,index)=>({
+      ...variant,
+      imageUrls:await Promise.all((variant.imageUrls||[]).slice(0,8).map((image,imageIndex)=>uploadImage(image,`variant-${product.id}-${index+1}-${imageIndex+1}.webp`))),
+    })));
+    const productWithMedia={...product,gallery,image:gallery[0]||'',technicalImage,priceVariants};
+    const saved=await apiRequest(product.apiId?`products/by-sku/${encodeURIComponent(product.id)}`:'products',product.apiId?'PATCH':'POST',toApiProduct(productWithMedia,publish)) as Row;
+    const mapped=fromApiProduct(saved);
+    loadedCollections.current.add('products');
+    setData(old=>({...old,products:mapped.status==="Đã gỡ bài"?old.products.filter(item=>item.apiId!==mapped.apiId):[mapped,...old.products.filter(item=>item.apiId!==mapped.apiId)]}));
+    return mapped;
+  };
+  const deleteProduct=async(product:Product)=>{
+    if(!product.apiId)throw new Error('Không tìm thấy mã sản phẩm trong API.');
+    await apiRequest(`products/${encodeURIComponent(product.apiId)}`,'DELETE');
+    loadedCollections.current.add('products');
+    setData(old=>({...old,products:old.products.filter(item=>item.apiId!==product.apiId)}));
+  };
+  const reloadProducts=async()=>{const records=await apiRequest('admin/products?all=true') as Row[];loadedCollections.current.add('products');loadedCollections.current.delete('dashboard:products');setData(old=>({...old,products:records.filter(item=>item.status!=='ARCHIVED').map(fromApiProduct)}));};
+  const commitCollection=(kind:'categories'|'promotions'|'posts',next:Row[])=>{void persistCollection(kind,data[kind] as Row[],next).catch(error=>notify(error instanceof Error?error.message:'Không thể đồng bộ dữ liệu với API.'));};
+  const deleteCategory=async(id:string):Promise<AdminCategory[]>=>{
+    await apiRequest(`categories/${encodeURIComponent(id)}`,'DELETE');
+    const categories=await apiRequest('categories') as Row[];
+    const mappedCategories=categories.map(fromApiCategory);
+    loadedCollections.current.add('categories');loadedCollections.current.delete('products');loadedCollections.current.delete('dashboard:products');
+    setData(old=>({...old,categories:mappedCategories}));
+    return mappedCategories;
+  };
+  const persistMaterial=async(method:'POST'|'PATCH'|'DELETE',id?:string,value:MaterialMutationValue={}):Promise<MaterialOption|null>=>{
+    if(catalogSyncStatus!=='connected')throw new Error('API chưa kết nối. Hãy khởi động backend rồi thử lại.');
+    const url=`${materialsApiBase}/materials${id?`/${encodeURIComponent(id)}`:''}`;
+    const payload:Row={};
+    if(value.name!==undefined)payload.name=value.name;
+    if(value.scope!==undefined)payload.scope=value.scope==='Đá quý'?'GEMSTONE':'JEWELRY';
+    if(value.kind!==undefined)payload.kind=value.kind;
+    if(value.active!==undefined)payload.active=value.active;
+    if(value.imageUrl!==undefined)payload.imageUrl=value.imageUrl;
+    if(value.sortOrder!==undefined)payload.sortOrder=value.sortOrder;
+    if(value.appliedCategoryIds!==undefined)payload.appliedCategoryIds=value.appliedCategoryIds;
+    const response=await fetch(url,{method,headers:method==='DELETE'?undefined:{'Content-Type':'application/json'},body:method==='DELETE'?undefined:JSON.stringify(method==='POST'?toApiMaterial(value):payload)});
+    if(!response.ok){if(method==='DELETE'&&response.status===404)return null;let message='Không thể lưu thay đổi vào database.';try{const detail=await response.json();if(typeof detail.message==='string')message=detail.message;else if(Array.isArray(detail.message))message=detail.message.join(' ');}catch{}throw new Error(message);}
+    if(method==='DELETE')return null;
+    return fromApiMaterial(await response.json() as Row);
+  };
+  const go=(key:ViewKey)=>{setView(key);setSearch('');setTableSearch('');setMenuOpen(false);window.scrollTo({top:0,behavior:'smooth'});};
+  const requestProductCreate=(initialCategory?:AdminCategory)=>{setProductCategoryPreset(initialCategory);setView('productCreate');setSearch('');setTableSearch('');setMenuOpen(false);window.scrollTo({top:0,behavior:'smooth'});};
+  const openProductCreate=()=>requestProductCreate();
+  const backFromProductCreate=()=>{setProductCategoryPreset(undefined);go('products');};
+  const openForm=(kind:keyof typeof fieldDefs,item?:Row)=>{setFormView(kind);setEditing(item||null);const initial:Record<string,string>={};fieldDefs[kind].forEach(field=>{initial[field.key]=item?String(item[field.key]??''):'';});if(!item&&kind==='customers'){initial.id=`KH${String(Date.now()).slice(-4)}`;initial.status='Active';initial.orders='0';initial.total='0';}if(!item&&kind==='products')initial.id=`SP${String(Date.now()).slice(-4)}`;if(!item&&kind==='posts')initial.date=new Date().toLocaleDateString('vi-VN');setDraft(initial);};
+  const closeForm=()=>{setFormView(null);setEditing(null);setDraft({});};
+  const saveForm=(event:FormEvent<HTMLFormElement>)=>{event.preventDefault();if(!formView)return;const entry:Row={...draft};void apiRequest(`customers${editing?.apiId?`/${editing.apiId}`:''}`,editing?.apiId?'PATCH':'POST',{name:entry.name,email:entry.email||null,phone:entry.phone||null,status:entry.status==='Inactive'?'INACTIVE':'ACTIVE',defaultAddress:entry.address||null,note:entry.note||null,segment:entry.segment||'Khách mới'}).then((saved)=>{const mapped=fromApiCustomer(saved as Row);setData(old=>({...old,customers:editing?.apiId?old.customers.map(row=>row.apiId===editing.apiId?mapped:row):[mapped,...old.customers]}));notify(editing?'Đã cập nhật khách hàng.':'Đã thêm khách hàng.');closeForm();}).catch(error=>notify(error instanceof Error?error.message:'Không thể lưu khách hàng vào API.'));};
+  const changeOrder=(id:string,status:string)=>{const row=data.orders.find(order=>order.id===id);if(!row?.apiId){notify('Không tìm thấy mã đơn hàng trong API.');return;}const statuses:Record<string,string>={'Chờ xác nhận':'PENDING_CONFIRMATION','Đang xử lý':'PROCESSING','Đang giao':'SHIPPING','Đã giao':'DELIVERED','Đã hủy':'CANCELLED'};void apiRequest(`orders/${row.apiId}/status`,'PATCH',{status:statuses[status]}).then(saved=>{const mapped=fromApiOrder(saved as Row);setData(old=>({...old,orders:old.orders.map(order=>order.apiId===row.apiId?mapped:order)}));notify(`Đã cập nhật đơn hàng ${id}.`);}).catch(error=>notify(error instanceof Error?error.message:'Không thể cập nhật trạng thái đơn hàng.'));};
+  const markOrderPaid=async(id:string)=>{const row=data.orders.find(order=>order.id===id);if(!row?.apiId)throw new Error('Không tìm thấy mã đơn hàng trong API.');const saved=await apiRequest(`orders/${row.apiId}/payment`,'PATCH',{status:'PAID'}) as Row;const mapped=fromApiOrder(saved);setData(old=>({...old,orders:old.orders.map(order=>order.apiId===row.apiId?mapped:order)}));notify(`Đã ghi nhận thanh toán đơn ${id}.`);};
+  const getViettelPostStatus=()=>apiRequest('integrations/viettel-post/status');
+  const getViettelPostPrintUrl=(order:Order)=>{if(!order.apiId)throw new Error('Không tìm thấy mã đơn hàng trong API.');return apiRequest(`integrations/viettel-post/orders/${order.apiId}/print-url`,'POST') as Promise<{url:string}>;};
+  const quoteViettelPost=(order:Order,body:Record<string,unknown>)=>{if(!order.apiId)throw new Error('Không tìm thấy mã đơn hàng trong API.');return apiRequest(`integrations/viettel-post/orders/${order.apiId}/services`,'POST',body) as Promise<{services:Array<{code:string;name:string;price:number;deliveryTime:string;exchangeWeight:number}>}>;};
+  const createViettelPostShipment=async(order:Order,body:Record<string,unknown>)=>{if(!order.apiId)throw new Error('Không tìm thấy mã đơn hàng trong API.');const saved=await apiRequest(`integrations/viettel-post/orders/${order.apiId}/shipment`,'POST',body) as Row;const mapped=fromApiOrder(saved);setData(old=>({...old,orders:old.orders.map(row=>row.apiId===mapped.apiId?mapped:row)}));notify(`Đã tạo vận đơn Viettel Post ${mapped.trackingCode} cho đơn ${mapped.id}.`);return mapped;};
+  const refreshOrders=async()=>{const rows=await apiRequest('orders') as Row[];const mapped=rows.map(fromApiOrder);loadedCollections.current.add('orders');loadedCollections.current.delete('dashboard:orders');setData(old=>({...old,orders:mapped}));};
+   const openShippingOrder=(id:string)=>{setSelectedOrderId(id);setView('orders');setMenuOpen(false);window.scrollTo({top:0,behavior:'smooth'});};
+   const createPosCustomer=async(customer:{name:string;phone:string})=>{const saved=await apiRequest('customers','POST',{name:customer.name,phone:customer.phone,email:null,status:'ACTIVE',segment:'Khách mới'});const mapped=fromApiCustomer(saved as Row);setData(old=>({...old,customers:[mapped,...old.customers.filter(row=>row.apiId!==mapped.apiId)]}));return mapped;};
+   const createPosOrder=async(order:Record<string,unknown>)=>{const saved=await apiRequest('admin/orders','POST',order) as Row;const mapped=fromApiOrder(saved);loadedCollections.current.delete('orders');loadedCollections.current.delete('products');loadedCollections.current.delete('dashboard:orders');loadedCollections.current.delete('dashboard:products');setData(old=>({...old,orders:[mapped,...old.orders.filter(row=>row.apiId!==mapped.apiId)]}));setSelectedOrderId(mapped.id);setView('orders');setMenuOpen(false);notify(saved.payments?.[0]?.status==='PAID'?`Đã hoàn tất đơn ${mapped.id} và cập nhật tồn kho.`:`Đã lưu đơn ${mapped.id} chờ thanh toán.`);};
+   const togglePost=(name:string)=>{setData(old=>({...old,posts:old.posts.map(post=>post.name===name?{...post,status:post.status==='Đã xuất bản'?'Bản nháp':'Đã xuất bản'}:post)}));};
+  const exportOrders=()=>{const fields=['Mã đơn','Khách hàng','Sản phẩm','Tổng tiền','Thanh toán','Trạng thái','Ngày'];const csv=[fields.join(','),...orderRows.map(order=>[order.id,order.customer,order.product,order.total,order.payment,order.status,order.date].map(value=>`"${String(value).replaceAll('"','""')}"`).join(','))].join('\r\n');const url=URL.createObjectURL(new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8'}));const link=document.createElement('a');link.href=url;link.download='geme-don-hang.csv';link.click();URL.revokeObjectURL(url);};
+
+  const renderOrders=(items:Row[],mini=false)=><div className="page-table-wrap"><table className="orders-table"><thead><tr><th>Mã đơn</th><th>Khách hàng</th><th>Tổng tiền</th><th>Trạng thái</th><th>Thời gian</th>{!mini&&<th></th>}</tr></thead><tbody>{items.length?items.map((row,index)=><tr key={String(row.id)}><td className="order-id">{String(row.id)}</td><td>{String(row.customer)}</td><td className="amount">{money(row.total as number)}</td><td>{mini?<Pill>{String(row.status)}</Pill>:<select className="table-status" value={String(row.status)} onChange={e=>changeOrder(String(row.id),e.target.value)}><option>Chờ xác nhận</option><option>Đang xử lý</option><option>Đang giao</option><option>Đã giao</option><option>Đã hủy</option></select>}</td><td>{String(row.time)}</td>{!mini&&<td><button className="row-action" onClick={()=>notify('Chi tiết đơn hàng sẽ hiển thị khi kết nối backend.')}>Chi tiết</button></td>}</tr>):<tr><td className="table-empty" colSpan={6}>Không có dữ liệu phù hợp.</td></tr>}</tbody></table></div>;
+  const renderGeneralRows=()=>{
+    if(!filteredRows.length)return <tr><td className="table-empty" colSpan={8}>Không có dữ liệu phù hợp.</td></tr>;
+    return filteredRows.map((row,index)=>{
+      if(view==='products')return <tr key={String(row.id)}><td className="strong-cell">{String(row.id)}</td><td><span className="product-cell">{<Thumb index={index}/>}<span>{String(row.name)}</span></span></td><td>{money(row.price as number)}</td><td>{row.sold}</td><td>{row.stock}</td><td><Pill>{String(row.status)}</Pill></td><td><button className="row-action" onClick={()=>openForm('products',row)}>Sửa</button></td></tr>;
+      
+      if(view==='categories')return <tr key={String(row.slug)}><td className="strong-cell">{String(row.name)}</td><td>{String(row.slug)}</td><td>{row.products} sản phẩm</td><td><Pill>{String(row.status)}</Pill></td><td><button className="row-action" onClick={()=>openForm('categories',row)}>Sửa</button></td></tr>;
+      if(view==='customers')return <tr key={String(row.id)}><td className="strong-cell">{String(row.id)}</td><td>{String(row.name)}</td><td>{String(row.email)}</td><td>{row.orders}</td><td>{money(row.total as number)}</td><td><Pill>{String(row.status)}</Pill></td><td><button className="row-action" onClick={()=>notify('Hồ sơ chi tiết sẽ được tải từ API sau này.')}>Chi tiết</button></td></tr>;
+      if(view==='promotions')return <tr key={String(row.code)}><td className="strong-cell">{String(row.code)}</td><td>{String(row.name)}</td><td>{String(row.discount)}</td><td>{row.uses}</td><td>{String(row.expiry)}</td><td><Pill>{String(row.status)}</Pill></td><td><button className="row-action" onClick={()=>openForm('promotions',row)}>Sửa</button></td></tr>;
+      return <tr key={String(row.name)}><td className="strong-cell">{String(row.name)}</td><td>{String(row.category)}</td><td>{String(row.date)}</td><td><button className="row-action" onClick={()=>togglePost(String(row.name))}><Pill>{String(row.status)}</Pill></button></td><td><button className="row-action" onClick={()=>openForm('posts',row)}>Sửa</button></td></tr>;
+    });
+  };
+  const headers:Record<string,string[]>={products:['Mã SP','Sản phẩm','Giá bán','Đã bán','Tồn kho','Trạng thái',''],categories:['Tên danh mục','Đường dẫn','Sản phẩm','Trạng thái',''],customers:['Mã KH','Khách hàng','Email','Đơn hàng','Tổng chi tiêu','Hạng',''],promotions:['Mã ưu đãi','Tên chương trình','Ưu đãi','Lượt dùng','Hạn sử dụng','Trạng thái',''],posts:['Tiêu đề bài viết','Danh mục','Ngày đăng','Trạng thái','']};
+  const addLabel:Partial<Record<ViewKey,string>>={products:'Thêm sản phẩm',categories:'Thêm danh mục',customers:'Thêm khách hàng',promotions:'Thêm mã ưu đãi',posts:'Thêm bài viết'};
+  const tablePanel=(key:ViewKey)=> <section className="panel"><div className="table-toolbar"><label className="global-search"><Icon name="search"/><input value={tableSearch} onChange={e=>setTableSearch(e.target.value)} type="search" placeholder="Tìm trong danh sách..."/></label>{addLabel[key]&&<button className="button button-primary" onClick={()=>openForm(key as keyof typeof fieldDefs)}><Icon name="plus"/>{addLabel[key]}</button>}</div><div className="page-table-wrap"><table className="data-table"><thead><tr>{headers[key].map((head,i)=><th key={`${head}-${i}`}>{head}</th>)}</tr></thead><tbody>{renderGeneralRows()}</tbody></table></div></section>;
+
+  const orderStats=[{label:'Tất cả đơn',filter:'',tone:'green',icon:'bag'},{label:'Chờ xác nhận',filter:'Chờ xác nhận',tone:'amber',icon:'clock'},{label:'Đang xử lý',filter:'Đang xử lý',tone:'orange',icon:'box'},{label:'Đang giao',filter:'Đang giao',tone:'blue',icon:'truck'},{label:'Đã giao',filter:'Đã giao',tone:'green',icon:'check'}];
+  const ordersPage=()=>view==='orderCreate'?<OrderCreateWorkspace products={data.products} customers={data.customers} onBack={()=>go('orders')} onCreateCustomer={createPosCustomer} onCreateOrder={createPosOrder}/>:<div className="orders-page">
+    <section className="orders-main">
+      <div className="orders-heading"><div><h1>Đơn hàng</h1><p>Quản lý và theo dõi các đơn hàng của GEME.</p></div>
+        <div className="orders-header-actions"><input className="order-filter" type="date" aria-label="Từ ngày" value={orderDateFrom} onChange={event=>setOrderDateFrom(event.target.value)}/><input className="order-filter" type="date" aria-label="Đến ngày" value={orderDateTo} onChange={event=>setOrderDateTo(event.target.value)}/><select className="order-filter" aria-label="Lọc trạng thái đơn hàng" value={statusFilter} onChange={event=>setStatusFilter(event.target.value)}><option value="">Trạng thái đơn hàng</option>{['Chờ xác nhận','Đang xử lý','Đang giao','Đã giao','Đã hủy'].map(status=><option key={status}>{status}</option>)}</select><select className="order-filter" aria-label="Lọc phương thức thanh toán" value={paymentFilter} onChange={event=>setPaymentFilter(event.target.value)}><option value="">Phương thức thanh toán</option>{Array.from(new Set(data.orders.map(order=>order.payment).filter(Boolean))).map(method=><option key={method} value={method}>{method}</option>)}</select><select className="order-filter" aria-label="Lọc vận chuyển" value={shippingFilter} onChange={event=>setShippingFilter(event.target.value)}><option value="">Vận chuyển</option>{Array.from(new Set(data.orders.map(order=>order.shipping).filter(Boolean))).map(method=><option key={method} value={method}>{method}</option>)}</select></div>
+        <div className="orders-actions"><button className="button button-quiet" onClick={exportOrders}><Icon name="file"/>Xuất Excel</button><button className="button button-primary" onClick={()=>setView('orderCreate')}>＋ Tạo đơn hàng</button></div>
+      </div>
+      <div className="order-stats">{orderStats.map(stat=>{const count=stat.filter?data.orders.filter(order=>order.status===stat.filter).length:data.orders.length;return <button key={stat.label} className={'order-stat'+(statusFilter===stat.filter?' is-selected':'')} onClick={()=>setStatusFilter(stat.filter)}><span className={'stat-glyph '+stat.tone}><Icon name={stat.icon}/></span><span className="stat-copy"><small>{stat.label}</small><strong>{count}</strong></span></button>;})}</div>
+      <section className="orders-table-panel" aria-label="Danh sách đơn hàng">
+        <div className="bulk-toolbar">
+          <label className="check-label">
+            <input
+              type="checkbox"
+              aria-label="Chọn tất cả đơn hàng"
+              checked={orderRows.length > 0 && orderRows.every(order => selectedOrderRows.includes(order.id))}
+              onChange={event => setSelectedOrderRows(event.target.checked ? orderRows.map(order => order.id) : [])}
+            />
+            <span>Chọn tất cả</span>
+          </label>
+          <select
+            className="bulk-select"
+            defaultValue=""
+            disabled={!selectedOrderRows.length}
+            aria-label="Cập nhật trạng thái hàng loạt"
+            onChange={event => {
+              const nextStatus = event.target.value;
+              if (!nextStatus) return;
+              selectedOrderRows.forEach(id => changeOrder(id, nextStatus));
+              setSelectedOrderRows([]);
+              event.currentTarget.value = "";
+            }}
+          >
+            <option value="">Xử lý hàng loạt</option>
+            <option>Đang xử lý</option>
+            <option>Đang giao</option>
+            <option>Đã giao</option>
+            <option>Đã hủy</option>
+          </select>
+          {selectedOrderRows.length > 0 && <span className="selected-count">Đã chọn {selectedOrderRows.length} đơn</span>}
+        </div>
+        <div className="page-table-wrap order-table-scroll">
+          <table className="data-table orders-full-table">
+            <thead><tr><th className="check-column"></th><th>Mã đơn</th><th>Khách hàng</th><th>Sản phẩm</th><th>Tổng tiền</th><th>Thanh toán</th><th>Trạng thái</th><th>Thời gian</th><th></th></tr></thead>
+            <tbody>
+              {orderRows.length ? orderRows.map(order => (
+                <tr
+                  key={order.id}
+                  className={'orders-clickable-row' + (selectedOrderId === order.id ? ' row-selected' : '')}
+                  tabIndex={0}
+                  aria-label={'Xem chi tiết đơn ' + order.id}
+                  onClick={() => setSelectedOrderId(order.id)}
+                  onKeyDown={event => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      setSelectedOrderId(order.id);
+                    }
+                  }}
+                >
+                  <td onClick={event => event.stopPropagation()}>
+                    <input
+                      type="checkbox"
+                      aria-label={'Chọn đơn ' + order.id}
+                      checked={selectedOrderRows.includes(order.id)}
+                      onChange={event => setSelectedOrderRows(current => event.target.checked ? [...current, order.id] : current.filter(id => id !== order.id))}
+                    />
+                  </td>
+                  <td><button className="order-id-button" type="button" onClick={event => { event.stopPropagation(); setSelectedOrderId(order.id); }}>#{order.id}</button></td>
+                  <td><span className="order-customer">{order.customer || 'Khách lẻ'}</span>{order.phone && <small className="order-secondary">{order.phone}</small>}</td>
+                  <td><span className="order-product">{order.items[0]?.image ? <img className="product-thumb" src={order.items[0].image} alt=""/> : <span className="product-thumb" aria-hidden="true">◇</span>}<span>{order.product || 'Đơn hàng'}<small className="order-secondary">{order.sku || '—'}{order.quantity > 1 ? ' · x' + order.quantity : ''}</small></span></span></td>
+                  <td className="amount">{money(order.total)}</td>
+                  <td>{order.payment}</td>
+                  <td><Pill>{order.status}</Pill></td>
+                  <td>{order.date}<small className="order-secondary">{order.time}</small></td>
+                  <td><button className="more-button" type="button" aria-label={'Chi tiết ' + order.id} onClick={event => { event.stopPropagation(); setSelectedOrderId(order.id); }}>•••</button></td>
+                </tr>
+              )) : <tr><td className="table-empty" colSpan={9}>Không có đơn hàng phù hợp.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+        <div className="orders-pagination"><span>Hiển thị {orderRows.length} / {data.orders.length} đơn hàng</span></div>
+      </section>
+    </section>
+    {selectedOrder?<OrderDetailPanel order={selectedOrder} onClose={()=>setSelectedOrderId('')} onConfirm={()=>changeOrder(selectedOrder.id,'Đang xử lý')} onDispatch={()=>changeOrder(selectedOrder.id,'Đang giao')} onDelivered={()=>changeOrder(selectedOrder.id,'Đã giao')} onMarkPaid={()=>markOrderPaid(selectedOrder.id)} onShowBill={()=>setReceiptOrderId(selectedOrder.id)} onCustomerHistory={()=>setSearch(selectedOrder.phone||selectedOrder.customer)} onGetViettelPostStatus={getViettelPostStatus} onGetViettelPostPrintUrl={()=>getViettelPostPrintUrl(selectedOrder)} onQuoteViettelPost={(body)=>quoteViettelPost(selectedOrder,body)} onCreateViettelPostShipment={(body)=>createViettelPostShipment(selectedOrder,body)} onRefreshOrders={refreshOrders}/>:<aside className="order-drawer order-drawer-empty"><strong>Chi tiết đơn hàng</strong><p>Chọn một đơn hàng để xem thông tin khách, sản phẩm và thanh toán.</p></aside>}
+  </div>;
+
+  const dashboard=()=> <DashboardWorkspace products={data.products} orders={data.orders} customerCount={data.customers.length} report={dashboardReport} reportLoading={dashboardReportStatus==="loading"||apiStatus==="connecting"} reportError={dashboardReportStatus==="error"} onOpen={go} onSelectOrder={setSelectedOrderId}/>;
+  const settings=()=> <div className="settings-grid"><section className="panel setting-card"><h2>Thông tin cửa hàng</h2><p>Thông tin liên hệ và nhận diện thương hiệu.</p><div className="field"><label>Tên cửa hàng</label><input value={siteSettings.storeName} onChange={event=>setSiteSettings(old=>({...old,storeName:event.target.value}))}/></div><div className="field"><label>Email hỗ trợ</label><input type="email" value={siteSettings.supportEmail} onChange={event=>setSiteSettings(old=>({...old,supportEmail:event.target.value}))} placeholder="Nhập email hỗ trợ"/></div><div className="field"><label>Số điện thoại</label><input type="tel" value={siteSettings.phone} onChange={event=>setSiteSettings(old=>({...old,phone:event.target.value}))} placeholder="Nhập số điện thoại"/></div><div className="field"><label>Địa chỉ</label><input value={siteSettings.address} onChange={event=>setSiteSettings(old=>({...old,address:event.target.value}))} placeholder="Nhập địa chỉ cửa hàng"/></div><div className="settings-actions"><button className="button button-primary" onClick={()=>void apiRequest('settings','PATCH',siteSettings).then(()=>notify('Đã lưu cài đặt vào database.')).catch(error=>notify(error instanceof Error?error.message:'Không thể lưu cài đặt.'))}>Lưu cài đặt</button></div></section><section className="panel setting-card"><h2>Kết nối backend</h2><p>Admin sử dụng API nội bộ và PostgreSQL.</p><div className="notice-card"><span className="activity-icon"> <Icon name="info"/></span><span>Trạng thái API<span><small>{apiStatus==='connected'?'Đã kết nối PostgreSQL qua API':apiStatus==='connecting'?'Đang kết nối API…':'API chưa kết nối; hãy kiểm tra backend và DATABASE_URL.'}</small></span></span></div><div className="notice-card"><span className="activity-icon amber"><Icon name="box"/></span><span>NestJS + PostgreSQL + Prisma<small>Danh mục, sản phẩm, đơn hàng, khách hàng, khuyến mãi và blog dùng chung database.</small></span></div></section></div>;
+
+
+  return <div className="app-shell cherylish-admin"><aside id="admin-sidebar" className={`sidebar admin-sidebar ${menuOpen?'open':''}`} aria-label="Menu quản trị"><a className="brand sidebar-brand" href="#tong-quan" onClick={()=>go('overview')}><img className="sidebar-brand__logo" src="/cherylish-sidebar-logo.png" alt="Cherylish Jewelry"/></a><nav className="side-nav sidebar-nav" aria-label="Điều hướng quản trị"><div className="sidebar-section-label">QUẢN LÝ</div>{menu.map((item) => {
+  const active = view === item.key || (item.key === 'orders' && view === 'orderCreate') || (item.key === 'products' && (view === 'productCreate' || view === 'categories' || view === 'materials' || view === 'pricing')) || (item.key === 'promotions' && view === 'promotionCreate') || (item.key === 'reports' && view === 'revenue') || (item.key === 'inventory' && (view === 'inventoryInbound' || view === 'inventoryOutbound' || view === 'inventoryHistory' || view === 'inventoryReceipts'));
+  const toggleSubmenu = () => setExpandedMenus((current) => ({ ...current, [item.key]: !current[item.key] }));
+  const openSubmenu = () => setExpandedMenus((current) => ({ ...current, [item.key]: true }));
+  return <div className="nav-group" key={item.key}>
+    {item.chevron ? <div className={`nav-item nav-item-split ${active ? 'active' : ''}`} aria-current={active ? 'page' : undefined}>
+      <span className="nav-icon"><Icon name={item.icon}/></span>
+      <button type="button" className="nav-main-link" aria-current={active ? 'page' : undefined} onClick={() => { go(item.key); openSubmenu(); }}>{item.label}</button>
+      {item.badge && <b className="nav-badge">{item.badge}</b>}
+      <button type="button" className="nav-chevron nav-chevron-action" aria-label={expandedMenus[item.key] ? `Thu gọn menu ${item.label}` : `Mở menu ${item.label}`} title="Hiện menu con" aria-expanded={!!expandedMenus[item.key]} onClick={toggleSubmenu}><Icon name="chevron"/></button>
+    </div> : <button className={`nav-item ${active ? 'active' : ''}`} aria-current={active ? 'page' : undefined} onClick={() => go(item.key)}><span className="nav-icon"><Icon name={item.icon}/></span><span>{item.label}</span>{item.badge && <b className="nav-badge">{item.badge}</b>}</button>}
+    {item.key === 'orders' && expandedMenus.orders === true && <div className="nav-submenu"><button className={view === 'orderCreate' ? 'active' : ''} onClick={() => go('orderCreate')}>Tạo đơn hàng</button></div>}
+    {item.key === 'products' && expandedMenus.products === true && <div className="nav-submenu"><button className={view === 'products' ? 'active' : ''} onClick={() => go('products')}>Tất cả sản phẩm</button><button className={view === 'productCreate' ? 'active' : ''} onClick={openProductCreate}>Thêm sản phẩm</button><button className={view === 'pricing' ? 'active' : ''} onClick={() => go('pricing')}>Hồ sơ giá</button><button className={view === 'categories' ? 'active' : ''} onClick={() => go('categories')}>Danh mục</button><button className={view === 'materials' ? 'active' : ''} onClick={() => go('materials')}>Loại đá</button></div>}
+    {item.key === 'promotions' && expandedMenus.promotions === true && <div className="nav-submenu"><button className={view === 'promotions' ? 'active' : ''} onClick={() => go('promotions')}>Tất cả khuyến mãi</button><button className={view === 'promotionCreate' ? 'active' : ''} onClick={() => go('promotionCreate')}>Tạo khuyến mãi</button></div>}
+    {item.key === 'posts' && expandedMenus.posts === true && <div className="nav-submenu"><button className={view === 'posts' ? 'active' : ''} onClick={() => go('posts')}>Tất cả bài viết</button></div>}
+    {item.key === 'inventory' && expandedMenus.inventory === true && <div className="nav-submenu"><button className={view === 'inventory' ? 'active' : ''} onClick={() => go('inventory')}>Tồn kho sản phẩm</button><button className={view === 'inventoryInbound' ? 'active' : ''} onClick={() => go('inventoryInbound')}>Nhập hàng</button><button className={view === 'inventoryOutbound' ? 'active' : ''} onClick={() => go('inventoryOutbound')}>Xuất kho</button><button className={view === 'inventoryReceipts' ? 'active' : ''} onClick={() => go('inventoryReceipts')}>Phiếu nhập</button><button className={view === 'inventoryHistory' ? 'active' : ''} onClick={() => go('inventoryHistory')}>Lịch sử tồn kho</button></div>}
+    {item.key === 'reports' && expandedMenus.reports === true && <div className="nav-submenu"><button className={view === 'reports' ? 'active' : ''} onClick={() => go('reports')}>Tổng quan báo cáo</button><button className={view === 'revenue' ? 'active' : ''} onClick={() => go('revenue')}>Doanh thu</button><button onClick={() => { if (view !== 'reports') go('reports'); window.setTimeout(() => document.getElementById('report-best-sellers')?.scrollIntoView({ behavior: 'smooth' }), 0); }}>Sản phẩm bán chạy</button><button onClick={() => { if (view !== 'reports') go('reports'); window.setTimeout(() => document.getElementById('report-customers')?.scrollIntoView({ behavior: 'smooth' }), 0); }}>Khách hàng</button><button onClick={() => { if (view !== 'reports') go('reports'); window.setTimeout(() => document.getElementById('report-orders')?.scrollIntoView({ behavior: 'smooth' }), 0); }}>Đơn hàng</button><button onClick={() => { if (view !== 'reports') go('reports'); window.setTimeout(() => document.getElementById('report-promotions')?.scrollIntoView({ behavior: 'smooth' }), 0); }}>Hiệu quả khuyến mãi</button></div>}
+  </div>;
+})}</nav><div className="sidebar-bottom"><div className="service-status"><i/> <span>Cherylish Admin</span></div>{adminProfile?.displayName&&<div className="sidebar-user"><span className="avatar"><Icon name="person"/></span><span><strong>{adminProfile.displayName}</strong>{adminProfile.role&&<small>{adminProfile.role}</small>}</span></div>}</div></aside>{menuOpen&&<button className="sidebar-backdrop" type="button" aria-label="Đóng menu" onClick={()=>{setMenuOpen(false);menuButtonRef.current?.focus();}}/>}<main className="workspace admin-workspace"><header className="topbar admin-topbar"><button ref={menuButtonRef} className="mobile-menu icon-button" onClick={()=>setMenuOpen(v=>!v)} aria-label={menuOpen?"Đóng menu":"Mở menu"} aria-controls="admin-sidebar" aria-expanded={menuOpen}><Icon name={menuOpen?'close':'menu'}/></button><label className="global-search"><Icon name="search"/><input value={search} onChange={e=>setSearch(e.target.value)} type="search" placeholder={view==='orders'?'Tìm kiếm mã đơn, khách hàng...':view==='products'?'Tìm sản phẩm, đơn hàng, khách hàng...':'Tìm sản phẩm, đơn hàng, khách hàng...'}/></label><div className="topbar-actions"><button className="icon-button notification-button" onClick={()=>notify('Chưa có thông báo mới.')} aria-label="Thông báo"><Icon name="bell"/></button><button className="admin-profile" onClick={()=>void fetch('/api/admin/auth/logout',{method:'POST'}).finally(()=>window.location.assign('/login'))}><span className="avatar"><Icon name="person"/></span><strong>{adminProfile?.displayName||"Tài khoản"}</strong><Icon name="chevron"/></button></div></header><div className="page-content">{apiStatus==='offline'&&view!=='banners'&&view!=='orders'&&view!=='products'&&view!=='productCreate'&&view!=='categories'&&view!=='materials'&&view!=='customers'&&view!=='promotions'&&view!=='promotionCreate'&&view!=='posts'&&view!=='blogEditor'&&view!=='reports'&&view!=='revenue'&&view!=='inventory'&&view!=='inventoryInbound'&&view!=='inventoryOutbound'&&view!=='inventoryHistory'&&view!=='inventoryReceipts'&&<div className="demo-notice"><Icon name="info"/>Chưa kết nối dữ liệu backend. Các danh sách sẽ hiển thị khi có dữ liệu.</div>}{view==='banners'?<BannerFooterWorkspace onNotify={notify}/>:(view==='orders'||view==='orderCreate')?ordersPage():view==='shipping'?<><PageTitle view="shipping"/><ShippingWorkspace orders={data.orders} onOpenOrder={openShippingOrder}/></>:view==='pricing'?<PriceProfileWorkspace products={data.products} categories={data.categories} materials={data.materials} onSave={persistProduct} onNotify={notify} onRefresh={reloadProducts}/>:view==='productCreate'?<ProductCreatePage products={data.products} categories={data.categories} materials={data.materials} initialCategory={productCategoryPreset} onBack={backFromProductCreate} onNotify={notify} onSave={async(created,publish)=>{const saved=await persistProduct(created,publish);setProductCategoryPreset(undefined);setView('products');setMenuOpen(false);notify(publish?`Đã đăng ${saved.id} với ${saved.gallery?.length??0} ảnh.`:`Đã lưu nháp ${saved.id} với ${saved.gallery?.length??0} ảnh.`);}}/>:view==='materials'?<MaterialsWorkspace materials={data.materials} categories={data.categories} onChange={(materials)=>setData(old=>({...old,materials}))} onPersist={persistMaterial} onSaveCategories={(nextCategories)=>persistCollection('categories',data.categories,nextCategories) as Promise<AdminCategory[]>} onDeleteCategory={deleteCategory} syncStatus={catalogSyncStatus} onNotify={notify}/>:view==='categories'?<CategoriesWorkspace categories={data.categories} onSave={(categories)=>persistCollection('categories',data.categories,categories) as Promise<AdminCategory[]>} onDelete={deleteCategory} onNotify={notify} onCreateProduct={requestProductCreate}/>:view==='promotionCreate'?<PromotionCreateWorkspace products={data.products} categories={data.categories} existingCodes={data.promotions.map((promotion)=>String(promotion.code||''))} onBack={()=>go('promotions')} onSave={async(promotion)=>{const saved=await apiRequest('promotions','POST',toApiPromotion(promotion)) as Row;const mapped=fromApiPromotion(saved);setData(old=>({...old,promotions:[mapped,...old.promotions]}));setView('promotions');setMenuOpen(false);window.scrollTo({top:0,behavior:'smooth'});notify('Đã lưu khuyến mãi vào database.');}}/>:view==='revenue'?<RevenueWorkspace report={dashboardReport} loading={dashboardReportStatus==="loading"}/>:view==='reports'?<ReportsWorkspace report={dashboardReport} loading={dashboardReportStatus==="loading"}/>:view==='blogEditor'?<BlogEditorPage post={blogPostDraft} categories={blogCategories} onBack={()=>go('posts')} onSave={saveBlogPost} onSaveCategory={saveBlogCategory} onNotify={notify}/>:view==='posts'?<BlogWorkspace posts={data.posts} categories={blogCategories} onCreate={()=>openBlogEditor()} onEdit={(post)=>openBlogEditor(post)} onDelete={async(post)=>{if(!post.apiId)throw new Error('Không tìm thấy mã bài viết trong API.');await apiRequest(`blog/${encodeURIComponent(String(post.apiId))}`,'DELETE');setData(old=>({...old,posts:old.posts.filter((item)=>item.apiId!==post.apiId)}));notify('Đã xóa bài viết khỏi database.');}} onNotify={notify}/>:view==='promotions'?<PromotionsWorkspace promotions={data.promotions} onChange={(promotions)=>setData(old=>({...old,promotions}))} onCreate={()=>go('promotionCreate')} onPersist={async(promotion)=>{const id=promotion.apiId?encodeURIComponent(String(promotion.apiId)):'';const saved=await apiRequest(id?'promotions/'+id:'promotions',id?'PATCH':'POST',toApiPromotion(promotion)) as Row;const mapped=fromApiPromotion(saved) as typeof promotion;setData(old=>({...old,promotions:id?old.promotions.map(item=>item.apiId===mapped.apiId?mapped:item):[mapped,...old.promotions]}));return mapped;}} onNotify={notify}/>:view==='inventory'||view==='inventoryInbound'||view==='inventoryOutbound'||view==='inventoryHistory'||view==='inventoryReceipts'?<InventoryWorkspace categories={data.categories} materials={data.materials} initialTab={view==='inventoryInbound'?'inbound':view==='inventoryOutbound'?'outbound':view==='inventoryHistory'?'history':view==='inventoryReceipts'?'receipts':'stock'} onNavigate={(tab:InventoryTab)=>go(tab==='inbound'?'inventoryInbound':tab==='outbound'?'inventoryOutbound':tab==='history'?'inventoryHistory':tab==='receipts'?'inventoryReceipts':'inventory')} onNotify={notify} onCategoryCreated={(category)=>setData(old=>({...old,categories:old.categories.some((item)=>item.id===category.id)?old.categories.map((item)=>item.id===category.id?category:item):[...old.categories,category]}))}/>:<>{view!=='products'&&<PageTitle view={view}>{(view==='overview')&&<button className="date-control" onClick={()=>notify('Bộ lọc ngày sẽ sử dụng API khi backend được kết nối.')}><Icon name="calendar"/><span>Chọn khoảng thời gian</span><Icon name="chevron"/></button>}</PageTitle>}{view==='overview'?dashboard():view==='settings'?settings():view==='customers'?<CustomersWorkspace customers={data.customers} onAdd={()=>openForm('customers')} onNotify={notify}/>:view==='products'?<ProductsWorkspace products={data.products} categories={data.categories} materials={data.materials} onAdd={openProductCreate} onSave={persistProduct} onDelete={deleteProduct} onNotify={notify}/>:tablePanel(view)}</>}</div></main>{toast&&<div className="toast show" role="status">{toast}</div>}{formView&&<div className="dialog-backdrop" role="presentation" onMouseDown={e=>{if(e.target===e.currentTarget)closeForm();}}><section className="edit-dialog" role="dialog" aria-modal="true" aria-labelledby="dialogTitle"><div className="dialog-heading"><div><span className="eyebrow">GEME ADMIN</span><h2 id="dialogTitle">{editing?'Sửa':'Thêm'} {viewMeta[formView].title.toLocaleLowerCase('vi')}</h2></div><button className="icon-button dialog-close" onClick={closeForm} aria-label="Đóng"><Icon name="close"/></button></div><form onSubmit={saveForm}><div className="dialog-fields">{fieldDefs[formView].map(field=><div className="field" key={field.key}><label htmlFor={`admin-${field.key}`}>{field.label}</label><input id={`admin-${field.key}`} name={field.key} type={field.type|| (field.numeric?'number':'text')} min={field.numeric?0:undefined} value={draft[field.key]||''} readOnly={field.key==='id'&&!!editing} onChange={e=>setDraft(old=>({...old,[field.key]:e.target.value}))} required/></div>)}</div><div className="dialog-actions"><button type="button" className="button button-quiet" onClick={closeForm}>Hủy</button><button className="button button-primary" type="submit">Lưu thông tin</button></div></form></section></div>}{selectedReceiptOrder && <OrderReceiptModal order={selectedReceiptOrder} onClose={()=>setReceiptOrderId("")}/>}</div>;
+}
+function Activity({icon,tone,children}:{icon:string;tone?:string;children:React.ReactNode}){return <div className="activity-item"><span className={`activity-icon ${tone||''}`}><Icon name={icon}/></span><span className="activity-text">{children}</span></div>;}
+
+

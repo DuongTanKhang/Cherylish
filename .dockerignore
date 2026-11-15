@@ -1,0 +1,12 @@
+**
+!outputs
+!outputs/geme-admin
+!outputs/geme-admin/**
+!outputs/geme-api
+!outputs/geme-api/**
+!outputs/geme-admin-bundle
+!outputs/geme-admin-bundle/**
+**/node_modules
+**/.next
+**/dist
+**/.venv

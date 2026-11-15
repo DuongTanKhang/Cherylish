@@ -1,0 +1,26 @@
+# Environment-specific secrets (commit only sanitized example files)
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# Dependencies and generated build output
+node_modules/
+.pnpm-store/
+.next/
+dist/
+coverage/
+.turbo/
+.cache/
+*.tsbuildinfo
+**/bin/
+**/obj/
+
+# Local logs and operating-system files
+*.log
+*.log.*
+.DS_Store
+Thumbs.db
+
+# Local Docker CLI and BuildKit credentials/state
+outputs/docker-config/

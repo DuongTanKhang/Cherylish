@@ -1,0 +1,127 @@
+name: cherylish
+services:
+  admin-bundle:
+    image: cherylish:latest
+    build:
+      context: .
+      dockerfile: outputs/geme-admin-bundle/Dockerfile
+      args:
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://127.0.0.1:4000/api/v1}
+    environment:
+      NODE_ENV: production
+      NEXT_PUBLIC_API_BASE_URL: http://127.0.0.1:4000/api/v1
+      GEME_API_BASE_URL: http://127.0.0.1:4000/api/v1
+      PORT: "4000"
+      ADMIN_AUTH_JWT_SECRET: ${ADMIN_AUTH_JWT_SECRET:?Set ADMIN_AUTH_JWT_SECRET in .env.docker}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@cherylish.local}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Set ADMIN_PASSWORD in .env.docker}
+      CORS_ORIGINS: http://localhost:3001,http://127.0.0.1:3001
+      DATABASE_URL: ${GEME_DATABASE_URL:?Set GEME_DATABASE_URL in .env.docker}
+      MEDIA_STORAGE_PROVIDER: ${MEDIA_STORAGE_PROVIDER:-database}
+      R2_ACCOUNT_ID: ${R2_ACCOUNT_ID:-}
+      R2_BUCKET_NAME: ${R2_BUCKET_NAME:-}
+      R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID:-}
+      R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY:-}
+      R2_PRIVATE_BUCKET_NAME: ${R2_PRIVATE_BUCKET_NAME:-}
+      MEDIA_PUBLIC_BASE_URL: ${MEDIA_PUBLIC_BASE_URL:-}
+      AEGIS_AUTH_API_URL: http://aegis:5130
+      GEME_ORDER_EMAIL_API_KEY: ${GEME_ORDER_EMAIL_API_KEY:?Set GEME_ORDER_EMAIL_API_KEY in .env.docker}
+      LOYVERSE_ENABLED: ${LOYVERSE_ENABLED:-false}
+      LOYVERSE_ACCESS_TOKEN: ${LOYVERSE_ACCESS_TOKEN:-}
+      LOYVERSE_STORE_ID: ${LOYVERSE_STORE_ID:-}
+      VIETTELPOST_ENABLED: ${VIETTELPOST_ENABLED:-false}
+      VIETTELPOST_API_BASE_URL: ${VIETTELPOST_API_BASE_URL:-https://partnerdev.viettelpost.vn}
+      VIETTELPOST_TOKEN: ${VIETTELPOST_TOKEN:-}
+      VIETTELPOST_SENDER_NAME: ${VIETTELPOST_SENDER_NAME:-}
+      VIETTELPOST_SENDER_PHONE: ${VIETTELPOST_SENDER_PHONE:-}
+      VIETTELPOST_SENDER_ADDRESS: ${VIETTELPOST_SENDER_ADDRESS:-}
+      VIETTELPOST_WEBHOOK_TOKEN: ${VIETTELPOST_WEBHOOK_TOKEN:-}
+    ports:
+      - "127.0.0.1:3001:3001"
+      - "127.0.0.1:4000:4000"
+    depends_on:
+      aegis:
+        condition: service_started
+      mailpit:
+        condition: service_started
+    networks:
+      - default
+    restart: unless-stopped
+
+  aegis:
+    build:
+      context: ./outputs/aegis
+      dockerfile: Dockerfile
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:5130
+      ConnectionStrings__DefaultConnection: Server=sqlserver,1433;Database=Aegis_Security_Platform;User Id=sa;Password=${AEGIS_SQL_PASSWORD:?Set AEGIS_SQL_PASSWORD in .env.docker};Encrypt=False;TrustServerCertificate=True
+      ConnectionStrings__Redis: redis:6379
+      Database__ApplyMigrationsOnStartup: "true"
+      Email__Host: ${AEGIS_EMAIL_HOST:-mailpit}
+      Email__Port: ${AEGIS_EMAIL_PORT:-1025}
+      Email__EnableSsl: ${AEGIS_EMAIL_ENABLE_SSL:-false}
+      Email__Username: ${AEGIS_EMAIL_USERNAME:-local-dev}
+      Email__Password: ${AEGIS_EMAIL_PASSWORD:-local-dev}
+      Email__FromEmail: ${AEGIS_EMAIL_FROM_EMAIL:-no-reply@cherylish.local}
+      Email__FromName: ${AEGIS_EMAIL_FROM_NAME:-Cherylish}
+      Email__PublicBaseUrl: ${AEGIS_EMAIL_PUBLIC_BASE_URL:-http://localhost:5130}
+      Otp__HashingKey: ${AEGIS_OTP_HASHING_KEY:?Set AEGIS_OTP_HASHING_KEY in .env.docker}
+      PasswordHashing__WorkFactor: ${AEGIS_BCRYPT_WORK_FACTOR:-10}
+      Jwt__Issuer: Aegis
+      Jwt__Audience: AegisClient
+      Jwt__Key: ${AEGIS_JWT_KEY:?Set AEGIS_JWT_KEY in .env.docker}
+      InternalApi__OrderEmailKey: ${GEME_ORDER_EMAIL_API_KEY:?Set GEME_ORDER_EMAIL_API_KEY in .env.docker}
+    ports:
+      - "127.0.0.1:5130:5130"
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_PID: ${AEGIS_SQL_EDITION:-Express}
+      MSSQL_SA_PASSWORD: ${AEGIS_SQL_PASSWORD:?Set AEGIS_SQL_PASSWORD in .env.docker}
+    volumes:
+      - aegis_sql_express_data:/var/opt/mssql
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$${MSSQL_SA_PASSWORD}" -C -Q "SELECT 1" >/dev/null 2>&1
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - aegis_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  mailpit:
+    image: axllent/mailpit:latest
+    ports:
+      - "127.0.0.1:8025:8025"
+      - "127.0.0.1:1025:1025"
+
+volumes:
+  aegis_sql_express_data:
+    external: true
+    name: geme-local_aegis_sql_express_data
+  aegis_redis_data:
+    external: true
+    name: geme-local_aegis_redis_data
