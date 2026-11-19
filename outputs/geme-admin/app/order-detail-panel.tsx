@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { OrderReceiptData } from "./order-receipt-modal";
+import { OrderQrButton } from "./order-payment-qr-modal";
 
 type VtpStatus = { configured: boolean; enabled: boolean; environment: string | null; senderConfigured: boolean; webhookConfigured: boolean; missing: string[] };
 type VtpService = { code: string; name: string; price: number; deliveryTime: string; exchangeWeight: number };
@@ -13,8 +14,11 @@ type Props = {
   onConfirm: () => void;
   onDispatch: () => void;
   onDelivered: () => void;
-  onMarkPaid: () => Promise<void>;
+  onRecordPayment: () => Promise<void>;
+  onRefundPreShipment: () => void;
+  onRetryOrderEmail: () => Promise<void>;
   onShowBill: () => void;
+  onShowPaymentQr?: () => void;
   onCustomerHistory: () => void;
   onGetViettelPostStatus: () => Promise<VtpStatus>;
   onGetViettelPostPrintUrl: () => Promise<{ url: string }>;
@@ -49,10 +53,25 @@ function paymentName(method: string) {
 }
 
 function paymentStatusName(status: string) {
-  return ({ PAID: "Đã thanh toán", PENDING: "Chưa thanh toán", FAILED: "Thanh toán thất bại", REFUNDED: "Đã hoàn tiền" } as Record<string, string>)[status] || status || "Chưa ghi nhận";
+  return ({ PAID: "Đã thanh toán", PARTIALLY_PAID: "Đã thu một phần", PENDING: "Chưa thanh toán", FAILED: "Thanh toán thất bại", REFUNDED: "Đã hoàn tiền", PARTIALLY_REFUNDED: "Đã hoàn một phần" } as Record<string, string>)[status] || status || "Chưa ghi nhận";
 }
 
-export default function OrderDetailPanel({ order, onClose, onConfirm, onDispatch, onDelivered, onMarkPaid, onShowBill, onCustomerHistory, onGetViettelPostStatus, onGetViettelPostPrintUrl, onQuoteViettelPost, onCreateViettelPostShipment, onRefreshOrders }: Props) {
+function posSyncName(status?: string | null) {
+  return ({ PENDING: "Đang chờ gửi", SYNCING: "Đang đồng bộ", RETRYING: "Sẽ tự thử lại", SYNCED: "Đã đồng bộ", BLOCKED: "Cần cấu hình thanh toán" } as Record<string, string>)[status || ""] || "Chưa gửi lên Loyverse";
+}
+
+function customerContactHref(order: OrderReceiptData) {
+  const phone = String(order.phone || "").replace(/[^\d+]/g, "");
+  if (phone) return `https://zalo.me/${phone.replace(/^\+/, "")}`;
+  if (order.email) {
+    const subject = encodeURIComponent(`Cherylish · Đơn hàng ${order.id}`);
+    const body = encodeURIComponent(`Chào ${order.customer || "Quý khách"},\n\nCherylish xin liên hệ về đơn hàng ${order.id}.`);
+    return `mailto:${encodeURIComponent(order.email)}?subject=${subject}&body=${body}`;
+  }
+  return "";
+}
+
+export default function OrderDetailPanel({ order, onClose, onConfirm, onDispatch, onDelivered, onRecordPayment, onRefundPreShipment, onRetryOrderEmail, onShowBill, onShowPaymentQr, onCustomerHistory, onGetViettelPostStatus, onGetViettelPostPrintUrl, onQuoteViettelPost, onCreateViettelPostShipment, onRefreshOrders }: Props) {
   const defaultWeight = Math.round(order.items.reduce((sum, item) => sum + (Number(item.weightGrams) || 0) * item.quantity, 0));
   const [shipmentOpen, setShipmentOpen] = useState(false);
   const [shipmentStatus, setShipmentStatus] = useState<VtpStatus | null>(null);
@@ -75,6 +94,8 @@ export default function OrderDetailPanel({ order, onClose, onConfirm, onDispatch
   const [refreshError, setRefreshError] = useState("");
   const [paymentLoading, setPaymentLoading] = useState(false);
   const [paymentError, setPaymentError] = useState("");
+  const [emailRetryLoading, setEmailRetryLoading] = useState(false);
+  const [emailRetryError, setEmailRetryError] = useState("");
 
   useEffect(() => {
     setShipmentOpen(false);
@@ -87,6 +108,7 @@ export default function OrderDetailPanel({ order, onClose, onConfirm, onDispatch
     setShippingNote(order.note || "");
     setRefreshError("");
     setPaymentError("");
+    setEmailRetryError("");
     setPrintError("");
     setPrintUrl("");
   }, [order.id, defaultWeight, order.note]);
@@ -141,17 +163,30 @@ export default function OrderDetailPanel({ order, onClose, onConfirm, onDispatch
   const markPaymentAsPaid = async () => {
     setPaymentLoading(true);
     setPaymentError("");
-    try { await onMarkPaid(); }
+    try { await onRecordPayment(); }
     catch (error) { setPaymentError(error instanceof Error ? error.message : "Không thể ghi nhận thanh toán."); }
     finally { setPaymentLoading(false); }
   };
+  const retryOrderEmail = async () => {
+    setEmailRetryLoading(true);
+    setEmailRetryError("");
+    try { await onRetryOrderEmail(); }
+    catch (error) { setEmailRetryError(error instanceof Error ? error.message : "Không thể thử gửi lại email."); }
+    finally { setEmailRetryLoading(false); }
+  };
 
-  const statusSteps = ["Đặt hàng", "Chờ xác nhận", "Đang xử lý", "Đang giao", "Đã giao", "Đã hủy"];
+  const statusSteps = order.status === "Chờ thanh toán"
+    ? ["Đặt hàng", "Chờ thanh toán", "Chờ xác nhận", "Đang xử lý", "Đang giao", "Đã giao", "Đã hủy"]
+    : ["Đặt hàng", "Chờ xác nhận", "Đang xử lý", "Đang giao", "Đã giao", "Đã hủy"];
   const statusIndex = Math.max(0, statusSteps.indexOf(order.status));
+  const storeSale = order.shipping === "Bán trực tiếp tại cửa hàng" || ["STORE", "IN_STORE", "POS"].includes(String(order.salesChannel || "").toUpperCase());
+  const contactHref = customerContactHref(order);
 
   return <aside className="order-drawer" aria-label={`Chi tiết đơn hàng ${order.id}`}>
     <div className="drawer-title"><h2>Chi tiết đơn hàng #{order.id}</h2><button className="icon-button" type="button" onClick={onClose} aria-label="Đóng chi tiết"><SectionIcon name="close" /></button></div>
     <div className="drawer-meta"><span className="status-pill amber">{order.status}</span><span>Đặt hàng lúc {order.date} {order.time}</span></div>
+    
+    {order.emailOutbox && <div className="order-email-status"><strong>Email xác nhận</strong><span>{({ PENDING: "Đang chờ gửi", PROCESSING: "Đang gửi", ACCEPTED: "Aegis đã nhận yêu cầu", FAILED: "Gửi lỗi", UNKNOWN: "Cần kiểm tra kết quả tại Aegis" } as Record<string, string>)[order.emailOutbox.status] || order.emailOutbox.status}</span>{order.emailOutbox.lastError && <small>{order.emailOutbox.lastError}</small>}{["FAILED", "PENDING", "UNKNOWN"].includes(order.emailOutbox.status) && <button type="button" onClick={retryOrderEmail} disabled={emailRetryLoading}>{emailRetryLoading ? "Đang thử lại…" : order.emailOutbox.status === "UNKNOWN" ? "Xác minh rồi thử lại" : "Thử gửi lại email"}</button>}{emailRetryError && <small className="vtp-error" role="alert">{emailRetryError}</small>}</div>}
 
     <div className="drawer-info-timeline">
       <div className="drawer-info-card">
@@ -169,8 +204,8 @@ export default function OrderDetailPanel({ order, onClose, onConfirm, onDispatch
               <div className="vtp-recipient-summary"><strong>{order.customer}</strong><span>{order.phone || "Thiếu số điện thoại"}</span><span>{order.address || "Thiếu địa chỉ nhận"}</span><span>{order.items.map((item) => `${item.productName} × ${item.quantity}`).join(", ")}</span></div>
               <label>Khối lượng kiện hàng (gram)<input type="number" min="1" max="100000" step="1" value={packageWeightGrams} onChange={(event) => { setPackageWeightGrams(event.target.value); setServices([]); setServiceCode(""); }} placeholder="Nhập cân nặng kiện hàng" required/></label>
               <div className="vtp-dimensions"><label>Dài (cm)<input type="number" min="0" max="300" value={lengthCm} onChange={(event) => { setLengthCm(event.target.value); setServices([]); setServiceCode(""); }}/></label><label>Rộng (cm)<input type="number" min="0" max="300" value={widthCm} onChange={(event) => { setWidthCm(event.target.value); setServices([]); setServiceCode(""); }}/></label><label>Cao (cm)<input type="number" min="0" max="300" value={heightCm} onChange={(event) => { setHeightCm(event.target.value); setServices([]); setServiceCode(""); }}/></label></div>
-              <label>Người trả phí vận chuyển<select value={freightPayment} onChange={(event) => { setFreightPayment(event.target.value as FreightPayment); setServices([]); setServiceCode(""); }}><option value="RECEIVER">Người nhận trả cước Viettel Post</option><option value="SENDER">GEME trả cước Viettel Post</option></select></label>
-              <small>{freightPayment === "RECEIVER" ? "COD thu tiền hàng; Viettel Post thu cước giao riêng từ người nhận." : "GEME thanh toán cước cho Viettel Post; COD thu số tiền còn phải trả theo tổng đơn."}</small>
+              <label>Người trả phí vận chuyển<select value={freightPayment} onChange={(event) => { setFreightPayment(event.target.value as FreightPayment); setServices([]); setServiceCode(""); }}><option value="RECEIVER">Người nhận trả cước Viettel Post</option><option value="SENDER">Cherylish trả cước Viettel Post</option></select></label>
+              <small>{freightPayment === "RECEIVER" ? "COD thu tiền hàng; Viettel Post thu cước giao riêng từ người nhận." : "Cherylish thanh toán cước cho Viettel Post; COD thu số tiền còn phải trả theo tổng đơn."}</small>
               {order.payment.includes("COD") && order.paymentStatus !== "PAID" && <div className="vtp-cod-summary"><span>Tiền COD sẽ ghi trên vận đơn</span><strong>{money(freightPayment === "SENDER" ? order.total : Math.max(0, order.subtotal - order.discountAmount))}</strong></div>}
               <label>Ghi chú vận chuyển<textarea rows={2} maxLength={150} value={shippingNote} onChange={(event) => setShippingNote(event.target.value)} placeholder="Ghi chú cho Viettel Post (không bắt buộc)"/></label>
               {services.length > 0 && <label>Dịch vụ Viettel Post<select value={serviceCode} onChange={(event) => setServiceCode(event.target.value)}><option value="">Chọn dịch vụ</option>{services.map((service) => <option key={service.code} value={service.code}>{service.name} · {money(service.price)}{service.deliveryTime ? ` · ${service.deliveryTime}` : ""}</option>)}</select></label>}
@@ -194,12 +229,16 @@ export default function OrderDetailPanel({ order, onClose, onConfirm, onDispatch
 
     <section className="drawer-products"><div className="drawer-products-title"><h3>Sản phẩm trong đơn</h3><span>{order.items.length} sản phẩm</span></div>
       {order.items.map((item) => <div className="drawer-product-row" key={item.id}>{item.image ? <img className="product-thumb" src={item.image} alt=""/> : <span className="product-thumb" aria-hidden="true">◇</span>}<span className="drawer-product-name">{item.productName}<small>{[item.productSku, item.quality, item.beadSize].filter(Boolean).join(" · ")}</small></span><span>x{item.quantity}</span><strong>{money(item.lineTotal)}</strong></div>)}
-      <div className="drawer-total"><div><span>Tạm tính</span><strong>{money(order.subtotal)}</strong></div><div><span>Phí vận chuyển</span><strong>{money(order.shippingFee)}</strong></div><div><span>Giảm giá</span><strong>− {money(order.discountAmount)}</strong></div><strong><span>Tổng tiền</span><span>{money(order.total)}</span></strong><div className="payment-status"><span>Trạng thái thanh toán</span><span className={"status-pill "+(order.paymentStatus === "PAID" ? "green" : order.paymentStatus === "FAILED" ? "red" : "amber")}>{paymentStatusName(order.paymentStatus)}</span><button className="row-action" type="button" onClick={onShowBill}>Xem hóa đơn</button></div></div>
+      <div className="drawer-total"><div><span>Tạm tính</span><strong>{money(order.subtotal)}</strong></div><div><span>Phí vận chuyển</span><strong>{money(order.shippingFee)}</strong></div><div><span>Giảm giá</span><strong>− {money(order.discountAmount)}</strong></div><strong><span>Tổng tiền</span><span>{money(order.total)}</span></strong><div className="payment-status"><span>Trạng thái thanh toán</span><span className={"status-pill "+(order.paymentStatus === "PAID" ? "green" : order.paymentStatus === "FAILED" ? "red" : "amber")}>{paymentStatusName(order.paymentStatus)}</span>{onShowPaymentQr&&<OrderQrButton order={order} onClick={onShowPaymentQr}/>}<button className="row-action" type="button" onClick={onShowBill}>Xem hóa đơn</button></div>
+        {(order.paymentCaptured || order.paymentRefunded || order.paymentBalance != null) && <div className="payment-collection-summary"><span>Đã thu: <strong>{money(order.paymentCaptured || 0)}</strong></span><span>Đã hoàn: <strong>{money(order.paymentRefunded || 0)}</strong></span><span>Còn phải thu: <strong>{money(order.paymentBalance || 0)}</strong></span></div>}
+        {order.paymentEntries?.length ? <div className="payment-ledger-list"><strong>Các khoản thu</strong>{order.paymentEntries.map((entry)=> <div key={entry.id}><span>{entry.method} · {entry.providerRef || "Giao dịch cũ"}{entry.recordingNote ? ` · ${entry.recordingNote}` : ""}</span><b>{money(entry.amount)}</b>{entry.refundedAmount>0&&<small>Đã hoàn {money(entry.refundedAmount)}</small>}</div>)}</div> : null}
+      </div>
     </section>
 
     {order.note && <section className="drawer-note"><h3><SectionIcon name="note"/>Ghi chú đơn hàng</h3><p>{order.note}</p></section>}
     <div className="drawer-actions">
-      {order.paymentStatus !== "PAID" && !order.payment.includes("COD") && order.status !== "Đã hủy" && <button className="button button-primary" type="button" onClick={() => void markPaymentAsPaid()} disabled={paymentLoading}>{paymentLoading ? "Đang lưu thanh toán…" : "✓ Ghi nhận đã thanh toán"}</button>}
+      {order.paymentStatus !== "PAID" && order.paymentBalance !== 0 && !order.payment.includes("COD") && <button className="button button-primary" type="button" onClick={() => void markPaymentAsPaid()} disabled={paymentLoading}>{paymentLoading ? "Đang đối soát…" : order.payment === "BANK_TRANSFER" && order.status !== "Đã hủy" ? "Kiểm tra Loyverse & xác nhận" : order.status === "Đã hủy" ? "Ghi nhận tiền đến muộn" : "＋ Ghi nhận khoản thu"}</button>}
+      {(((["Chờ xác nhận", "Đang xử lý"].includes(order.status)) || order.status === "Đã hủy") && (order.paymentCaptured || 0) > (order.paymentRefunded || 0) && !order.payment.includes("COD")) && <button className="button button-quiet" type="button" onClick={onRefundPreShipment}>Ghi nhận hoàn tiền trước giao</button>}
       {paymentError && <small className="vtp-error" role="alert">{paymentError}</small>}
       {order.status === "Chờ xác nhận"
         ? <button className="button button-primary" type="button" onClick={onConfirm}>✓ Xác nhận đơn</button>
@@ -213,7 +252,7 @@ export default function OrderDetailPanel({ order, onClose, onConfirm, onDispatch
               : <button className="button button-primary" type="button" onClick={onDelivered}>✓ Xác nhận đã giao</button>
             : <button className="button button-quiet" type="button" onClick={onShowBill}>Chi tiết hóa đơn</button>}
       <button className="button button-quiet" type="button" onClick={onShowBill}>▤ In đơn</button>
-      {order.phone ? <a className="button button-quiet" href={`tel:${order.phone}`}>☎ Liên hệ khách</a> : <button className="button button-quiet" type="button" disabled>☎ Liên hệ khách</button>}
+      {!storeSale && (contactHref ? <a className="button button-quiet" href={contactHref} target={order.phone ? "_blank" : undefined} rel={order.phone ? "noreferrer" : undefined}>{order.phone ? "Chat Zalo" : "Soạn email cho khách"}</a> : <button className="button button-quiet" type="button" disabled title="Đơn này chưa có số điện thoại hoặc email của khách">Thiếu liên hệ khách</button>)}
     </div>
   </aside>;
 }

@@ -4,6 +4,7 @@ import { Observable, Subject, interval, merge, map } from "rxjs";
 import { PrismaService } from "../prisma/prisma.service.js";
 import type { Prisma } from "../generated/prisma/client.js";
 import { MediaAssetsService } from "../media/media-assets.service.js";
+import { LoyverseService } from "../loyverse/loyverse.service.js";
 import { ensureCustomerForPaidOrder } from "./customer-profile.js";
 import { sanitizeBlogHtml } from "./blog-html.js";
 
@@ -146,6 +147,8 @@ export class CommerceService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(CommerceService.name);
   private soldOutCleanupTimer: ReturnType<typeof setInterval> | null = null;
   private promotionStatusTimer: ReturnType<typeof setInterval> | null = null;
+  private loyverseSyncTimer: ReturnType<typeof setInterval> | null = null;
+  private loyverseSyncRunning = false;
   private categoryCache: { expiresAt: number; records: any[] } | null = null;
   private categoryLoad: Promise<any[]> | null = null;
   private categoryCacheVersion = 0;
@@ -153,10 +156,22 @@ export class CommerceService implements OnModuleInit, OnModuleDestroy {
   private readonly productReadLoads = new Map<string, Promise<any[]>>();
   private productReadGeneration = 0;
 
-  constructor(private readonly prisma: PrismaService, private readonly mediaStore: MediaAssetsService) {}
+  constructor(private readonly prisma: PrismaService, private readonly mediaStore: MediaAssetsService, private readonly loyverse: LoyverseService) {}
 
-  private async queueProductStockSync(_client: any, _productIds: Iterable<string>) {
-    // Inventory remains local to GEME; optional POS synchronization was removed.
+  private async queueProductStockSync(client: any, productIds: Iterable<string>) {
+    const ids = [...new Set(productIds)].filter(Boolean);
+    if (!ids.length) return;
+    const enabled = this.loyverse.isConfigured();
+    await client.product.updateMany({
+      where: { id: { in: ids }, kind: { in: ["JEWELRY", "GEMSTONE"] } },
+      data: {
+        loyverseStockSyncStatus: enabled ? "PENDING" : "DISABLED",
+        loyverseStockSyncAttempts: 0,
+        loyverseStockSyncNextAttemptAt: enabled ? new Date() : null,
+        loyverseStockSyncedAt: null,
+        loyverseStockSyncError: null,
+      },
+    });
   }
 
   async onModuleInit() {
@@ -176,11 +191,122 @@ export class CommerceService implements OnModuleInit, OnModuleDestroy {
       void this.syncPromotionStatuses().catch((error) => this.logger.error("Không thể đồng bộ trạng thái khuyến mãi theo thời gian.", error));
     }, 60_000);
     this.promotionStatusTimer.unref?.();
+    this.loyverseSyncTimer = setInterval(() => { void this.processLoyverseSync(); }, 5_000);
+    this.loyverseSyncTimer.unref?.();
   }
 
   onModuleDestroy() {
     if (this.soldOutCleanupTimer) clearInterval(this.soldOutCleanupTimer);
     if (this.promotionStatusTimer) clearInterval(this.promotionStatusTimer);
+    if (this.loyverseSyncTimer) clearInterval(this.loyverseSyncTimer);
+  }
+
+  private async processLoyverseSync() {
+    if (this.loyverseSyncRunning || !this.loyverse.isConfigured()) return;
+    this.loyverseSyncRunning = true;
+    try {
+      const now = new Date();
+      const pending = await this.prisma.product.findMany({
+        where: { kind: { in: ["JEWELRY", "GEMSTONE"] }, OR: [
+          { loyverseStockSyncStatus: { in: ["PENDING", "RETRYING"] }, OR: [{ loyverseStockSyncNextAttemptAt: null }, { loyverseStockSyncNextAttemptAt: { lte: now } }] },
+          { loyversePriceSyncStatus: { in: ["PENDING", "RETRYING"] }, OR: [{ loyversePriceSyncNextAttemptAt: null }, { loyversePriceSyncNextAttemptAt: { lte: now } }] },
+        ] },
+        select: {
+          id: true,
+          kind: true,
+          sku: true,
+          name: true,
+          price: true,
+          stock: true,
+          loyverseStockSyncStatus: true,
+          loyverseStockSyncAttempts: true,
+          loyverseStockSyncNextAttemptAt: true,
+          loyversePriceSyncStatus: true,
+          loyversePriceSyncAttempts: true,
+          loyversePriceSyncNextAttemptAt: true,
+          category: { select: { pricingMode: true } },
+          variants: {
+            orderBy: { sortOrder: "asc" },
+            select: { id: true, sku: true, price: true, stock: true, quality: true, beadSize: true, carat: true, gemstoneQuality: true },
+          },
+        },
+        take: 10,
+      });
+      for (const product of pending) {
+        const stockPending = ["PENDING", "RETRYING"].includes(String(product.loyverseStockSyncStatus || ""))
+          && (!product.loyverseStockSyncNextAttemptAt || product.loyverseStockSyncNextAttemptAt <= now);
+        const pricePending = ["PENDING", "RETRYING"].includes(String(product.loyversePriceSyncStatus || ""))
+          && (!product.loyversePriceSyncNextAttemptAt || product.loyversePriceSyncNextAttemptAt <= now);
+        if (stockPending) await this.syncProductStockToLoyverse(product);
+        if (pricePending) await this.syncProductPriceToLoyverse(product);
+      }
+    } catch (error) {
+      this.logger.warn("Lỗi khi xử lý hàng đợi đồng bộ Loyverse.", error);
+    } finally {
+      this.loyverseSyncRunning = false;
+    }
+  }
+
+  private nextLoyverseRetry(attempts: number) {
+    return new Date(Date.now() + Math.min(60 * 60_000, 15_000 * 2 ** Math.min(attempts, 7)));
+  }
+
+  private async syncProductStockToLoyverse(product: any) {
+    const attempts = Number(product.loyverseStockSyncAttempts || 0) + 1;
+    try {
+      const result = await this.loyverse.syncStock([product]);
+      await this.prisma.product.update({ where: { id: product.id }, data: {
+        loyverseStockSyncStatus: result.unmatched ? "LOCAL_ONLY" : "SYNCED",
+        loyverseStockSyncAttempts: attempts,
+        loyverseStockSyncNextAttemptAt: null,
+        loyverseStockSyncedAt: new Date(),
+        loyverseStockSyncError: result.unmatched ? `${result.unmatched} SKU chưa khớp trong Loyverse; tồn vẫn được lưu cục bộ.` : null,
+      } });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Không thể đồng bộ tồn kho với Loyverse.";
+      await this.prisma.product.update({ where: { id: product.id }, data: {
+        loyverseStockSyncStatus: "RETRYING", loyverseStockSyncAttempts: attempts,
+        loyverseStockSyncNextAttemptAt: this.nextLoyverseRetry(attempts), loyverseStockSyncError: message.slice(0, 1000),
+      } });
+    }
+  }
+
+  private async syncProductPriceToLoyverse(product: any) {
+    const attempts = Number(product.loyversePriceSyncAttempts || 0) + 1;
+    try {
+      const result = await this.loyverse.syncPrices([product]);
+      await this.prisma.product.update({ where: { id: product.id }, data: {
+        loyversePriceSyncStatus: result.unmatched ? "LOCAL_ONLY" : "SYNCED",
+        loyversePriceSyncAttempts: attempts,
+        loyversePriceSyncNextAttemptAt: null,
+        loyversePriceSyncedAt: new Date(),
+        loyversePriceSyncError: result.unmatched ? `${result.unmatched} SKU chưa khớp trong Loyverse; giá vẫn được lưu cục bộ.` : null,
+      } });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Không thể đồng bộ giá với Loyverse.";
+      await this.prisma.product.update({ where: { id: product.id }, data: {
+        loyversePriceSyncStatus: "RETRYING", loyversePriceSyncAttempts: attempts,
+        loyversePriceSyncNextAttemptAt: this.nextLoyverseRetry(attempts), loyversePriceSyncError: message.slice(0, 1000),
+      } });
+    }
+  }
+
+  async loyverseStatus() {
+    return this.loyverse.status();
+  }
+
+  async testLoyverseConnection() {
+    return this.loyverse.testConnection();
+  }
+
+  async queueLoyverseResync() {
+    if (!this.loyverse.isConfigured()) throw new BadRequestException("Hãy cấu hình LOYVERSE_ENABLED, LOYVERSE_ACCESS_TOKEN và LOYVERSE_STORE_ID trong .env.docker rồi khởi động lại container.");
+    const now = new Date();
+    const products = await this.prisma.product.updateMany({ where: { kind: { in: ["JEWELRY", "GEMSTONE"] } }, data: {
+        loyverseStockSyncStatus: "PENDING", loyverseStockSyncAttempts: 0, loyverseStockSyncNextAttemptAt: now, loyverseStockSyncError: null,
+        loyversePriceSyncStatus: "PENDING", loyversePriceSyncAttempts: 0, loyversePriceSyncNextAttemptAt: now, loyversePriceSyncError: null,
+    } });
+    return { queuedProducts: products.count };
   }
 
   private async persistDataImageReference(value: string, filename: string, alt?: string | null) {
@@ -345,7 +471,14 @@ export class CommerceService implements OnModuleInit, OnModuleDestroy {
   private async backfillMissingJewelryVariantSkus() {
     const variants = await this.prisma.productPriceVariant.findMany({
       where: { sku: null, product: { kind: "JEWELRY" } },
-      include: { product: { select: { sku: true } } },
+      select: {
+        id: true,
+        productId: true,
+        sortOrder: true,
+        quality: true,
+        beadSize: true,
+        product: { select: { sku: true } },
+      },
       orderBy: [{ productId: "asc" }, { sortOrder: "asc" }, { id: "asc" }],
       take: 2000,
     });
@@ -793,7 +926,14 @@ export class CommerceService implements OnModuleInit, OnModuleDestroy {
                 || Number(existing.carat ?? 0) !== Number(variant.carat ?? 0)
                 || String(existing.gemstoneQuality || "") !== String(variant.gemstoneQuality || ""));
             });
-          await tx.product.update({ where: { id }, data: { ...data, images: { deleteMany: {}, create: images.map((url: string, index: number) => ({ url, alt: data.name, sortOrder: index, isPrimary: index === 0 })) } } });
+          const loyversePriceSync = priceChanged && ["JEWELRY", "GEMSTONE"].includes(data.kind) ? {
+            loyversePriceSyncStatus: this.loyverse.isConfigured() ? "PENDING" : "DISABLED",
+            loyversePriceSyncAttempts: 0,
+            loyversePriceSyncNextAttemptAt: this.loyverse.isConfigured() ? new Date() : null,
+            loyversePriceSyncedAt: null,
+            loyversePriceSyncError: null,
+          } : {};
+          await tx.product.update({ where: { id }, data: { ...data, ...loyversePriceSync, images: { deleteMany: {}, create: images.map((url: string, index: number) => ({ url, alt: data.name, sortOrder: index, isPrimary: index === 0 })) } } });
           const existingVariants = await tx.productPriceVariant.findMany({ where: { productId: id }, select: { id: true, optionKey: true } });
           const existingByKey = new Map(existingVariants.map((variant) => [variant.optionKey, variant]));
           for (const variant of variantCreate) {
@@ -915,7 +1055,17 @@ export class CommerceService implements OnModuleInit, OnModuleDestroy {
     monthStart.setHours(0, 0, 0, 0);
     const [products, soldItems, movements] = await Promise.all([
       this.prisma.product.findMany({
-        include: {
+        where: { kind: { in: ["JEWELRY", "GEMSTONE"] } },
+        select: {
+          id: true,
+          sku: true,
+          name: true,
+          status: true,
+          stock: true,
+          minimumStock: true,
+          price: true,
+          kind: true,
+          updatedAt: true,
           category: { select: { id: true, name: true, pricingMode: true } },
           gemstoneType: { select: { id: true, name: true } },
           materialOption: { select: { id: true, name: true, kind: true, scope: true } },
@@ -947,7 +1097,10 @@ export class CommerceService implements OnModuleInit, OnModuleDestroy {
 
   inventoryMovements(limitInput?: string) {
     const limit = Math.min(Math.max(Number(limitInput) || 20, 1), 100);
-    return this.prisma.inventoryMovement.findMany({ orderBy: { createdAt: "desc" }, take: limit });
+    return this.prisma.inventoryMovement.findMany({
+      select: { id: true, productId: true, variantId: true, productName: true, productSku: true, variantLabel: true, type: true, quantity: true, stockBefore: true, stockAfter: true, reference: true, note: true, createdAt: true },
+      orderBy: { createdAt: "desc" }, take: limit,
+    });
   }
 
   async inventorySkuRules() {
@@ -1068,7 +1221,7 @@ export class CommerceService implements OnModuleInit, OnModuleDestroy {
   inventoryReceipts(limitInput?: string) {
     const limit = Math.min(Math.max(Number(limitInput) || 100, 1), 500);
     return this.prisma.inventoryReceipt.findMany({
-      select: { id: true, receiptNo: true, receivedAt: true, supplierName: true, receiver: true, warehouseName: true, totalQuantity: true, totalAmount: true, status: true },
+      select: { id: true, receiptNo: true, receivedAt: true, supplierName: true, receiver: true, warehouseName: true, totalQuantity: true, totalAmount: true, status: true, loyverseSyncStatus: true, loyverseSyncError: true },
       orderBy: { receivedAt: "desc" }, take: limit,
     });
   }
@@ -1076,10 +1229,20 @@ export class CommerceService implements OnModuleInit, OnModuleDestroy {
   async inventoryReceipt(id: string) {
     const receipt = await this.prisma.inventoryReceipt.findUnique({
       where: { id },
-      include: {
+      select: {
+        id: true, receiptNo: true, receivedAt: true, supplierName: true, receiver: true, warehouseName: true,
+        paymentMethod: true, status: true, note: true, additionalNote: true, documentUrls: true,
+        totalQuantity: true, subtotalAmount: true, discountPercent: true, discountAmount: true,
+        vatPercent: true, vatAmount: true, totalAmount: true, createdAt: true,
         items: {
           orderBy: { createdAt: "asc" },
-          include: { variant: { select: { sku: true, quality: true, beadSize: true, carat: true, gemstoneQuality: true } } },
+          select: {
+            id: true, productId: true, variantId: true, productName: true, productSku: true,
+            quality: true, shape: true, beadSize: true, carat: true, gemstoneQuality: true,
+            categoryName: true, stoneName: true, kind: true, quantity: true, unitCost: true,
+            lineTotal: true, createdAt: true,
+            variant: { select: { sku: true, quality: true, beadSize: true, carat: true, gemstoneQuality: true } },
+          },
         },
       },
     });
@@ -1114,7 +1277,17 @@ export class CommerceService implements OnModuleInit, OnModuleDestroy {
     ];
     return this.prisma.inventoryIssue.findMany({
       where, orderBy: [{ issuedAt: "desc" }, { createdAt: "desc" }], take: 1000,
-      include: { items: { orderBy: { createdAt: "asc" } } },
+      select: {
+        id: true, issueNo: true, issuedAt: true, reason: true, recipient: true, warehouseName: true,
+        status: true, note: true, totalQuantity: true, totalAmount: true, createdAt: true, updatedAt: true,
+        items: {
+          orderBy: { createdAt: "asc" },
+          select: {
+            id: true, productId: true, variantId: true, productName: true, productSku: true, variantLabel: true,
+            categoryName: true, stoneName: true, kind: true, quantity: true, unitPrice: true, lineTotal: true, createdAt: true,
+          },
+        },
+      },
     });
   }
 
@@ -1493,7 +1666,7 @@ export class CommerceService implements OnModuleInit, OnModuleDestroy {
           receiver: String(input.receiver || "").trim().slice(0, 120) || null,
           warehouseName: String(input.warehouseName || "Kho chính").trim().slice(0, 120),
           paymentMethod: String(input.paymentMethod || "").trim().slice(0, 40) || null,
-          status: "COMPLETED", note: String(input.note || "").trim() || null,
+          status: "COMPLETED", loyverseSyncStatus: "LOCAL_ONLY", loyverseSyncError: "Chi tiết phiếu nhập, nhà cung cấp, VAT và chứng từ được lưu tại Cherylish; Loyverse miễn phí chỉ nhận SKU, giá và số tồn.", note: String(input.note || "").trim() || null,
 
 
           additionalNote: String(input.additionalNote || "").trim() || null,
@@ -1769,6 +1942,16 @@ export class CommerceService implements OnModuleInit, OnModuleDestroy {
           }
         }
         await this.queueProductStockSync(tx, changedProductIds);
+        if (changedProductIds.length) await tx.product.updateMany({
+          where: { id: { in: [...new Set(changedProductIds)] }, kind: { in: ["JEWELRY", "GEMSTONE"] }, price: { gt: 0 } },
+          data: {
+            loyversePriceSyncStatus: this.loyverse.isConfigured() ? "PENDING" : "DISABLED",
+            loyversePriceSyncAttempts: 0,
+            loyversePriceSyncNextAttemptAt: this.loyverse.isConfigured() ? new Date() : null,
+            loyversePriceSyncedAt: null,
+            loyversePriceSyncError: null,
+          },
+        });
         return tx.inventoryReceipt.findUniqueOrThrow({ where: { id: savedReceipt.id }, include: { items: true } });
       }, { isolationLevel: "Serializable", maxWait: 10_000, timeout: 60_000 });
       for (const id of new Set(changedProductIds)) this.publishCatalogChange("product", "updated", id);
@@ -2455,11 +2638,73 @@ export class CommerceService implements OnModuleInit, OnModuleDestroy {
     return this.settings();
   }
 
+  async grossProfitReport(query: Record<string, string>) {
+    const grains = new Set(["day", "week", "month", "quarter"]);
+    const grain = String(query.grain || "month").toLowerCase();
+    if (!grains.has(grain)) throw new BadRequestException("Kỳ báo cáo phải là day, week, month hoặc quarter.");
+    const to = parseDate(query.to, new Date());
+    const from = parseDate(query.from, new Date(to.getTime() - 30 * 86400000));
+    if (to <= from) throw new BadRequestException("Ngày kết thúc phải sau ngày bắt đầu.");
+    if (to.getTime() - from.getTime() > 1095 * 86400000) throw new BadRequestException("Khoảng báo cáo tối đa là 3 năm.");
+
+    const rows = await this.prisma.$queryRaw<Array<{
+      bucket: string; revenue: unknown; cost: unknown; profit: unknown; soldQuantity: number;
+      missingCostLines: number; missingCostRevenue: unknown;
+    }>>`
+      WITH sales_lines AS (
+        SELECT o.placed_at, DATE_TRUNC(${grain}, o.placed_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date AS bucket,
+               i.product_sku, i.quantity, i.line_total,
+               (SELECT SUM(ri.unit_cost * ri.quantity) / NULLIF(SUM(ri.quantity), 0)
+                FROM inventory_receipt_items ri
+                JOIN inventory_receipts receipt ON receipt.id = ri.receipt_id
+                WHERE UPPER(BTRIM(ri.product_sku)) = UPPER(BTRIM(i.product_sku))
+                  AND ri.unit_cost > 0 AND receipt.status = 'COMPLETED'
+                  AND ri.kind IN ('JEWELRY', 'GEMSTONE') AND receipt.received_at <= o.placed_at) AS average_unit_cost
+        FROM orders o
+        JOIN order_items i ON i.order_id = o.id
+        JOIN products p ON p.id = i.product_id
+        WHERE o.placed_at >= ${from} AND o.placed_at <= ${to}
+          AND o.status::text IN ('PROCESSING', 'SHIPPING', 'DELIVERED')
+          AND p.kind::text IN ('JEWELRY', 'GEMSTONE')
+      )
+      SELECT TO_CHAR(bucket, 'YYYY-MM-DD') AS bucket,
+             SUM(line_total)::numeric AS revenue,
+             ROUND(SUM(COALESCE(average_unit_cost, 0) * quantity))::numeric AS cost,
+             (SUM(line_total) - ROUND(SUM(COALESCE(average_unit_cost, 0) * quantity)))::numeric AS profit,
+             SUM(quantity)::int AS "soldQuantity",
+             COUNT(*) FILTER (WHERE average_unit_cost IS NULL)::int AS "missingCostLines",
+             COALESCE(SUM(line_total) FILTER (WHERE average_unit_cost IS NULL), 0)::numeric AS "missingCostRevenue"
+      FROM sales_lines
+      GROUP BY bucket
+      ORDER BY bucket ASC
+    `;
+    const timeline = rows.map((row) => ({
+      bucket: row.bucket,
+      revenue: Number(row.revenue) || 0,
+      cost: Number(row.cost) || 0,
+      profit: Number(row.profit) || 0,
+      soldQuantity: Number(row.soldQuantity) || 0,
+      missingCostLines: Number(row.missingCostLines) || 0,
+      missingCostRevenue: Number(row.missingCostRevenue) || 0,
+    }));
+    return {
+      from, to, grain,
+      revenue: timeline.reduce((sum, row) => sum + row.revenue, 0),
+      cost: timeline.reduce((sum, row) => sum + row.cost, 0),
+      profit: timeline.reduce((sum, row) => sum + row.profit, 0),
+      soldQuantity: timeline.reduce((sum, row) => sum + row.soldQuantity, 0),
+      missingCostLines: timeline.reduce((sum, row) => sum + row.missingCostLines, 0),
+      missingCostRevenue: timeline.reduce((sum, row) => sum + row.missingCostRevenue, 0),
+      costMethod: "Giá nhập bình quân từ phiếu nhập hoàn tất trước ngày bán; chỉ tính Trang sức và Đá quý.",
+      timeline,
+    };
+  }
+
   async report(query: Record<string, string>) {
     const from = parseDate(query.from, new Date(Date.now() - 30 * 86400000));
     const to = parseDate(query.to, new Date());
     const orderWhere = { placedAt: { gte: from, lte: to }, status: { not: "CANCELLED" as const } };
-    const [orderStats, customerCount, newCustomers, productCount, productsSold, timeline, categories, products, payments, salesChannels, promotionPerformance, topOrders] = await Promise.all([
+    const [orderStats, customerCount, newCustomers, productCount, productsSold, timeline, categories, products, payments, salesChannels, promotionPerformance, topOrders, buyerGroups, orderStatusGroups, lifetimeValue, productKindSales, topProductsByKind] = await Promise.all([
       this.prisma.order.aggregate({ where: orderWhere, _sum: { totalAmount: true }, _count: { _all: true } }),
       this.prisma.customer.count({ where: { createdAt: { lte: to } } }),
       this.prisma.customer.count({ where: { createdAt: { gte: from, lte: to } } }),
@@ -2543,6 +2788,62 @@ export class CommerceService implements OnModuleInit, OnModuleDestroy {
         ORDER BY o.total_amount DESC, o.placed_at DESC
         LIMIT 5
       `,
+      this.prisma.$queryRaw<Array<{ firstTime: bigint; returning: bigint }>>`
+        WITH eligible_orders AS (
+          SELECT o.placed_at,
+                 COALESCE(o.customer_id::text, NULLIF(LOWER(BTRIM(o.customer_email)), ''),
+                   NULLIF(REGEXP_REPLACE(COALESCE(o.customer_phone, ''), '[^0-9]', '', 'g'), '')) AS buyer_key
+          FROM orders o
+          WHERE o.placed_at <= ${to} AND o.status::text IN ('PROCESSING', 'SHIPPING', 'DELIVERED')
+        ), identified_buyers AS (
+          SELECT buyer_key, MIN(placed_at) AS first_purchase_at,
+                 BOOL_OR(placed_at >= ${from} AND placed_at <= ${to}) AS purchased_in_period
+          FROM eligible_orders WHERE buyer_key IS NOT NULL GROUP BY buyer_key
+        )
+        SELECT COUNT(*) FILTER (WHERE purchased_in_period AND first_purchase_at >= ${from})::bigint AS "firstTime",
+               COUNT(*) FILTER (WHERE purchased_in_period AND first_purchase_at < ${from})::bigint AS returning
+        FROM identified_buyers
+      `,
+      this.prisma.order.groupBy({ by: ["status"], where: { placedAt: { gte: from, lte: to } }, _count: { _all: true } }),
+      this.prisma.$queryRaw<Array<{ buyerCount: bigint; averageLifetimeOrderValue: unknown; averageOrdersPerBuyer: unknown }>>`
+        WITH buyer_orders AS (
+          SELECT COALESCE(o.customer_id::text, NULLIF(LOWER(BTRIM(o.customer_email)), ''),
+                   NULLIF(REGEXP_REPLACE(COALESCE(o.customer_phone, ''), '[^0-9]', '', 'g'), '')) AS buyer_key,
+                 SUM(o.total_amount)::numeric AS lifetime_order_value, COUNT(*)::numeric AS order_count
+          FROM orders o
+          WHERE o.placed_at <= ${to} AND o.status::text IN ('PROCESSING', 'SHIPPING', 'DELIVERED')
+          GROUP BY 1
+          HAVING COALESCE(o.customer_id::text, NULLIF(LOWER(BTRIM(o.customer_email)), ''),
+                   NULLIF(REGEXP_REPLACE(COALESCE(o.customer_phone, ''), '[^0-9]', '', 'g'), '')) IS NOT NULL
+        )
+        SELECT COUNT(*)::bigint AS "buyerCount",
+               ROUND(AVG(lifetime_order_value))::numeric AS "averageLifetimeOrderValue",
+               AVG(order_count)::numeric AS "averageOrdersPerBuyer"
+        FROM buyer_orders
+      `,
+      this.prisma.$queryRaw<Array<{ kind: string; sold: number; revenue: number; orders: number }>>`
+        SELECT p.kind::text AS kind, SUM(i.quantity)::int AS sold,
+               COALESCE(SUM(i.line_total), 0)::double precision AS revenue, COUNT(DISTINCT o.id)::int AS orders
+        FROM order_items i JOIN orders o ON o.id = i.order_id
+        JOIN products p ON p.id = i.product_id
+        WHERE o.placed_at >= ${from} AND o.placed_at <= ${to}
+          AND o.status::text <> 'CANCELLED' AND p.kind::text IN ('JEWELRY', 'GEMSTONE')
+        GROUP BY p.kind ORDER BY p.kind::text
+      `,
+      this.prisma.$queryRaw<Array<{ kind: string; rank: number; product: string; sku: string; sold: number; revenue: number }>>`
+        WITH ranked_products AS (
+          SELECT p.kind::text AS kind, i.product_name AS product, i.product_sku AS sku,
+                 SUM(i.quantity)::int AS sold, COALESCE(SUM(i.line_total), 0)::double precision AS revenue,
+                 ROW_NUMBER() OVER (PARTITION BY p.kind ORDER BY SUM(i.quantity) DESC, SUM(i.line_total) DESC, i.product_sku) AS rank
+          FROM order_items i JOIN orders o ON o.id = i.order_id
+          JOIN products p ON p.id = i.product_id
+          WHERE o.placed_at >= ${from} AND o.placed_at <= ${to}
+            AND o.status::text <> 'CANCELLED' AND p.kind::text IN ('JEWELRY', 'GEMSTONE')
+          GROUP BY p.kind, i.product_id, i.product_name, i.product_sku
+        )
+        SELECT kind, rank::int AS rank, product, sku, sold, revenue
+        FROM ranked_products WHERE rank <= 10 ORDER BY kind, rank
+      `,
     ]);
     const revenue = Number(orderStats._sum.totalAmount) || 0;
     const orderCount = orderStats._count._all;
@@ -2550,6 +2851,15 @@ export class CommerceService implements OnModuleInit, OnModuleDestroy {
       from, to, revenue, orderCount, customerCount, newCustomers, productCount,
       productsSold: Number(productsSold[0]?.count) || 0,
       averageOrderValue: orderCount ? Math.round(revenue / orderCount) : 0,
+      buyerCounts: { firstTime: Number(buyerGroups[0]?.firstTime || 0), returning: Number(buyerGroups[0]?.returning || 0) },
+      lifetimeCustomerValue: {
+        buyers: Number(lifetimeValue[0]?.buyerCount || 0),
+        averageOrderValue: Number(lifetimeValue[0]?.averageLifetimeOrderValue || 0),
+        averageOrders: Number(lifetimeValue[0]?.averageOrdersPerBuyer || 0),
+      },
+      orderStatuses: orderStatusGroups.map((group) => ({ status: group.status, count: group._count._all })),
+      productKindSales: productKindSales.map((row) => ({ ...row, sold: Number(row.sold) || 0, revenue: Number(row.revenue) || 0, orders: Number(row.orders) || 0 })),
+      topProductsByKind: topProductsByKind.map((row) => ({ ...row, rank: Number(row.rank) || 0, sold: Number(row.sold) || 0, revenue: Number(row.revenue) || 0 })),
       timeline, categories, products, payments, salesChannels, promotionPerformance, topOrders,
     };
   }

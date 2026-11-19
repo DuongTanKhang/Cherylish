@@ -24,9 +24,18 @@ export type OrderReceiptData = {
   customer: string;
   phone: string;
   email: string;
+  salesChannel?: string;
+  buyerTypeAtCheckout?: string | null;
   status: string;
   payment: string;
   paymentStatus: string;
+  qrPaymentStartedAt?: string | null;
+  qrPaymentExpiresAt?: string | null;
+  paymentCaptured?: number;
+  paymentRefunded?: number;
+  paymentBalance?: number;
+  paymentEntries?: Array<{ id: string; method: string; status: string; amount: number; providerRef?: string | null; paidAt?: string | null; refundedAmount: number; recordedByAdminId?: string | null; recordingNote?: string | null }>;
+  emailOutbox?: { status: string; attemptCount: number; lastError?: string | null; nextAttemptAt?: string | null; acceptedAt?: string | null } | null;
   shipping: string;
   address: string;
   trackingCode: string;
@@ -42,6 +51,8 @@ export type OrderReceiptData = {
   carrierLocation?: string | null;
   carrierFee?: number | null;
   note: string;
+  loyverseSyncStatus?: string | null;
+  loyverseSyncError?: string | null;
   subtotal: number;
   discountAmount: number;
   shippingFee: number;
@@ -70,6 +81,7 @@ function paymentStatusLabel(value: string) {
     FAILED: "Thanh toán thất bại",
     REFUNDED: "Đã hoàn tiền",
     PARTIALLY_REFUNDED: "Đã hoàn một phần",
+    PARTIALLY_PAID: "Đã thu một phần",
   } as Record<string, string>)[value] || value || "—";
 }
 
@@ -85,13 +97,13 @@ export default function OrderReceiptModal({ order, onClose }: Props) {
   return <div className="order-receipt-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
     <section className="order-receipt-dialog" role="dialog" aria-modal="true" aria-labelledby="orderReceiptTitle">
       <header className="order-receipt-heading no-print">
-        <div><span>GEME · ĐƠN HÀNG</span><h2 id="orderReceiptTitle">Hóa đơn bán hàng</h2></div>
+        <div><span>Cherylish · ĐƠN HÀNG</span><h2 id="orderReceiptTitle">Hóa đơn bán hàng</h2></div>
         <div className="order-receipt-actions"><button className="order-receipt-print" type="button" onClick={() => window.print()}>In hóa đơn</button><button className="order-receipt-close" type="button" onClick={onClose} aria-label="Đóng hóa đơn">×</button></div>
       </header>
 
       <div className="order-receipt-paper">
         <div className="order-receipt-title">
-          <div><strong>GEME</strong><span>SILVER &amp; GEMSTONE JEWELRY</span><small>HÓA ĐƠN BÁN HÀNG</small></div>
+          <div><strong>Cherylish</strong><span>SILVER &amp; GEMSTONE JEWELRY</span><small>HÓA ĐƠN BÁN HÀNG</small></div>
           <div><b>{order.id}</b><span>Ngày tạo: {order.date} · {order.time}</span><span>Trạng thái: {order.status}</span></div>
         </div>
 
@@ -120,7 +132,7 @@ export default function OrderReceiptModal({ order, onClose }: Props) {
           <div className="order-receipt-grand"><span>Tổng thanh toán</span><strong>{money(order.total)}</strong></div>
         </div>
         {order.note && <div className="order-receipt-note"><strong>Ghi chú đơn hàng</strong><p>{order.note}</p></div>}
-        <footer className="order-receipt-thanks">Cảm ơn Quý khách đã mua sắm tại GEME.</footer>
+        <footer className="order-receipt-thanks">Cảm ơn Quý khách đã mua sắm tại Cherylish.</footer>
       </div>
       <footer className="order-receipt-dialog-footer no-print"><button className="button button-quiet" type="button" onClick={onClose}>Đóng</button></footer>
     </section>

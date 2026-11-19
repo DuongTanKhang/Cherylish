@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import AdminShell from "./admin-shell";
+import { resolveAdminPermissions } from "./admin-permissions";
 
 export const dynamic = "force-dynamic";
 
@@ -9,6 +10,9 @@ export default async function Home() {
   if (!token) redirect("/login");
 
   const apiBase = (process.env.GEME_API_BASE_URL || process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:4000/api/v1").replace(/\/+$/, "");
+  let initialPermissions: string[] | undefined;
+  let initialRole: string | undefined;
+  let initialAdminId: string | undefined;
   try {
     const response = await fetch(`${apiBase}/admin/auth/me`, {
       headers: { Authorization: `Bearer ${token}` },
@@ -16,11 +20,19 @@ export default async function Home() {
       signal: AbortSignal.timeout(5000),
     });
     if (response.status === 401 || response.status === 403) redirect("/login");
+    if (response.ok) {
+      const identity: unknown = await response.json();
+      if (identity && typeof identity === "object") {
+        if ("id" in identity && typeof identity.id === "string") initialAdminId = identity.id;
+        if ("role" in identity && typeof identity.role === "string") initialRole = identity.role;
+        initialPermissions = resolveAdminPermissions(identity);
+      }
+    }
   } catch (error) {
     if (error && typeof error === "object" && "digest" in error && String((error as { digest?: unknown }).digest).startsWith("NEXT_REDIRECT")) throw error;
     // Keep the authenticated shell available during a short API outage; its
     // requests remain protected server-side and show the existing offline state.
   }
 
-  return <AdminShell />;
+  return <AdminShell initialPermissions={initialPermissions} initialRole={initialRole} initialAdminId={initialAdminId} />;
 }

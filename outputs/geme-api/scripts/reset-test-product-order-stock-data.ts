@@ -1,6 +1,5 @@
 import "dotenv/config";
 import { PrismaService } from "../src/prisma/prisma.service.js";
-import { Pos365Service } from "../src/pos365/pos365.service.js";
 
 const execute = process.argv.includes("--execute");
 if (process.env.NODE_ENV === "production") throw new Error("Reset bị chặn trong NODE_ENV=production.");
@@ -8,11 +7,10 @@ if (process.env.NODE_ENV === "production") throw new Error("Reset bị chặn tr
 const prisma = new PrismaService();
 await prisma.$connect();
 try {
-  const pos365 = new Pos365Service(prisma);
   const [products, orders, receipts, issues, movements, receiptItems, issueItems, orderItems, movementRows, productMedia, settings, categories, materials, posts, postImages, promotions] = await Promise.all([
-    prisma.product.findMany({ select: { sku: true, pos365PriceSyncStatus: true, variants: { select: { sku: true } } } }),
+    prisma.product.count(),
     prisma.order.count(),
-    prisma.inventoryReceipt.findMany({ select: { receiptNo: true, pos365SyncCode: true, pos365SyncStatus: true } }),
+    prisma.inventoryReceipt.count(),
     prisma.inventoryIssue.count(),
     prisma.inventoryMovement.count(),
     prisma.inventoryReceiptItem.findMany({ select: { productSku: true } }),
@@ -40,39 +38,16 @@ try {
     const assetUrl = asset.sourceKey ? `/assets/${asset.sourceKey.replace(/^assets\//, "")}` : "";
     return !sharedReferences.some((reference) => reference.includes(mediaUrl) || Boolean(assetUrl && reference.includes(assetUrl)));
   });
-  const skus = [...new Set([
-    ...products.flatMap((product) => [product.sku, ...product.variants.map((variant) => variant.sku || "")]),
-    ...receiptItems.map((item) => item.productSku),
-    ...issueItems.map((item) => item.productSku),
-    ...orderItems.map((item) => item.productSku),
-    ...movementRows.map((item) => item.productSku),
-  ].map((sku) => String(sku || "").trim()).filter(Boolean))];
-  const purchaseOrderCodes = [...new Set(receipts.flatMap((receipt) => {
-    const mayHaveSynced = Boolean(receipt.pos365SyncCode || receipt.pos365SyncStatus);
-    return mayHaveSynced ? [receipt.pos365SyncCode || `GEME-${receipt.receiptNo}`] : [];
-  }))];
-  const status = pos365.status();
-  const mayHavePosData = purchaseOrderCodes.length > 0 || products.some((product) => product.pos365PriceSyncStatus === "SYNCED");
   const summary = {
-    products: products.length,
+    products,
     orders,
-    inventoryReceipts: receipts.length,
+    inventoryReceipts: receipts,
     inventoryIssues: issues,
     inventoryMovements: movements,
     orphanProductMedia: orphanProductMedia.length,
-    posSkuCandidates: skus.length,
-    posReceiptCandidates: purchaseOrderCodes.length,
-    posConfigured: status.configured,
   };
   console.log(JSON.stringify({ mode: execute ? "EXECUTE" : "DRY_RUN", before: summary }));
   if (execute) {
-    if (mayHavePosData && !status.configured) {
-      throw new Error("Có dữ liệu đã/đang đồng bộ POS365 nhưng kết nối hiện chưa cấu hình; giữ nguyên dữ liệu để tránh lệch POS.");
-    }
-    if (status.configured) {
-      if (purchaseOrderCodes.length) await pos365.deletePurchaseOrdersByCode(purchaseOrderCodes);
-      if (skus.length) await pos365.deleteProductsBySku(skus);
-    }
     const deleted = await prisma.$transaction(async (tx) => {
       const deletedOrders = await tx.order.deleteMany({});
       const deletedReceipts = await tx.inventoryReceipt.deleteMany({});

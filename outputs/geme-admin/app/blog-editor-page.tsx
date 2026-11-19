@@ -157,7 +157,7 @@ export default function BlogEditorPage({ post, categories, onBack, onSave, onSav
   const toolbarButton = (label: string, title: string, command: string, value?: string, text?: React.ReactNode) => <button type="button" aria-label={label} title={title} onMouseDown={(event) => format(event, command, value)}>{text || label}</button>;
 
   return <div className="blog-editor-page">
-    <header className="blog-editor-topbar"><button className="blog-editor-back" onClick={onBack} aria-label="Quay lại danh sách">← <span>Danh sách bài viết</span></button><div className="blog-editor-brand"><strong>G E M E</strong><span>TRÌNH SOẠN THẢO</span></div><div className="blog-editor-top-actions"><span className="blog-save-indicator"><i/> Lưu vào PostgreSQL</span><button className="button button-quiet" disabled={saving || uploading} onClick={() => void save("Bản nháp")}>{saving ? "Đang lưu…" : "Lưu nháp"}</button><button className="button button-primary" disabled={saving || uploading} onClick={() => void save("Đã xuất bản")}>{saving ? "Đang lưu…" : "Xuất bản"}</button></div></header>
+    <header className="blog-editor-topbar"><button className="blog-editor-back" onClick={onBack} aria-label="Quay lại danh sách">← <span>Danh sách bài viết</span></button><div className="blog-editor-brand"><img src="/cherylish-sidebar-logo.png" alt="Cherylish Jewelry"/><span>TRÌNH SOẠN THẢO</span></div><div className="blog-editor-top-actions"><span className="blog-save-indicator"><i/> Lưu vào PostgreSQL</span><button className="button button-quiet" disabled={saving || uploading} onClick={() => void save("Bản nháp")}>{saving ? "Đang lưu…" : "Lưu nháp"}</button><button className="button button-primary" disabled={saving || uploading} onClick={() => void save("Đã xuất bản")}>{saving ? "Đang lưu…" : "Xuất bản"}</button></div></header>
 
     <div className="blog-editor-layout">
       <main className="blog-document-workspace">
@@ -172,10 +172,10 @@ export default function BlogEditorPage({ post, categories, onBack, onSave, onSav
           <input ref={inlineImageInput} className="blog-hidden-file" type="file" accept="image/*" multiple onChange={(event) => void handleInlineImage(event)}/>
         </div>
         <div className="blog-paper-wrap"><article className="blog-paper">
-          <input className="blog-paper-title" style={{fontFamily:'"Segoe UI", Arial, sans-serif',letterSpacing:"normal"}} value={draft.name} maxLength={180} onChange={(event) => update({ name: event.target.value })} placeholder="Tiêu đề bài viết" aria-label="Tiêu đề bài viết"/>
-          <textarea className="blog-paper-summary" style={{fontFamily:'"Segoe UI", Arial, sans-serif',letterSpacing:"normal"}} value={draft.summary} maxLength={500} onChange={(event) => update({ summary: event.target.value })} placeholder="Viết một đoạn giới thiệu ngắn cho bài viết..." aria-label="Mô tả ngắn"/>
-          <div key={String(post?.apiId || "new")} ref={bodyRef} className="blog-paper-body" style={{fontFamily:'"Segoe UI", Arial, sans-serif',letterSpacing:"normal"}} contentEditable suppressContentEditableWarning dangerouslySetInnerHTML={{ __html: draft.content }} onMouseUp={rememberSelection} onKeyUp={rememberSelection} onInput={updateBody} data-placeholder="Bắt đầu viết bài tại đây. Dùng thanh công cụ để định dạng, hoặc chèn ảnh giữa các đoạn văn..."/>
-          <div className="blog-paper-footer">GEME JOURNAL <span>•</span> Bản thảo được lưu vào PostgreSQL khi bấm Lưu nháp hoặc Xuất bản</div>
+          <input className="blog-paper-title" style={{fontFamily:'var(--sans)',letterSpacing:"normal"}} value={draft.name} maxLength={180} onChange={(event) => update({ name: event.target.value })} placeholder="Tiêu đề bài viết" aria-label="Tiêu đề bài viết"/>
+          <textarea className="blog-paper-summary" style={{fontFamily:'var(--sans)',letterSpacing:"normal"}} value={draft.summary} maxLength={500} onChange={(event) => update({ summary: event.target.value })} placeholder="Viết một đoạn giới thiệu ngắn cho bài viết..." aria-label="Mô tả ngắn"/>
+          <div key={String(post?.apiId || "new")} ref={bodyRef} className="blog-paper-body" style={{fontFamily:'var(--sans)',letterSpacing:"normal"}} contentEditable suppressContentEditableWarning dangerouslySetInnerHTML={{ __html: draft.content }} onMouseUp={rememberSelection} onKeyUp={rememberSelection} onInput={updateBody} data-placeholder="Bắt đầu viết bài tại đây. Dùng thanh công cụ để định dạng, hoặc chèn ảnh giữa các đoạn văn..."/>
+          <div className="blog-paper-footer">CHERYLISH JOURNAL <span>•</span> Bản thảo được lưu vào PostgreSQL khi bấm Lưu nháp hoặc Xuất bản</div>
         </article></div>
       </main>
 

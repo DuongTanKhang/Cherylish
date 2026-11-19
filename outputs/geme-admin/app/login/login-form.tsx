@@ -3,7 +3,7 @@
 import { FormEvent, useState } from "react";
 
 export default function AdminLoginForm() {
-  const [email, setEmail] = useState("");
+  const [account, setAccount] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -17,7 +17,7 @@ export default function AdminLoginForm() {
       const response = await fetch("/api/admin/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email: account, password }),
         cache: "no-store",
       });
       const result = await response.json().catch(() => ({})) as { message?: string };
@@ -29,22 +29,16 @@ export default function AdminLoginForm() {
     }
   }
 
-  return <div className="login-content">
-    <p className="login-eyebrow">CHERYLISH · ADMIN</p>
-    <h1 className="login-title" id="login-title">Đăng nhập quản trị</h1>
-    <p className="login-description">Sử dụng tài khoản quản trị được cấp để tiếp tục.</p>
+  return <section className="admin-login-card">
+    <img className="admin-login-logo" src="/cherylish-jewelry-logo.png" alt="Cherylish Jewelry"/>
+    <p className="admin-login-eyebrow">Cherylish · ADMIN</p>
+    <h1>Đăng nhập quản trị</h1>
+    <p className="admin-login-description">Sử dụng tài khoản quản trị đã được cấp để tiếp tục.</p>
     <form onSubmit={submit}>
-      <label className="login-field" htmlFor="admin-email">
-        <span className="login-label">Tài khoản hoặc email</span>
-        <input id="admin-email" name="email" className="login-input" type="text" autoComplete="username" required maxLength={320} value={email} onChange={(event) => setEmail(event.target.value)} aria-invalid={Boolean(error)} aria-describedby={error ? "login-error" : undefined} />
-      </label>
-      <label className="login-field" htmlFor="admin-password">
-        <span className="login-label">Mật khẩu</span>
-        <input id="admin-password" name="password" className="login-input" type="password" autoComplete="current-password" required maxLength={256} value={password} onChange={(event) => setPassword(event.target.value)} aria-invalid={Boolean(error)} aria-describedby={error ? "login-error" : undefined} />
-      </label>
-      {error && <p className="login-error" id="login-error" role="alert">{error}</p>}
-      <button className="login-submit" type="submit" disabled={busy}>{busy ? "Đang xác thực…" : "Đăng nhập"}</button>
+      <label>Tài khoản hoặc email<input type="text" autoComplete="username" required maxLength={320} value={account} onChange={(event) => setAccount(event.target.value)} /></label>
+      <label>Mật khẩu<input type="password" autoComplete="current-password" required maxLength={256} value={password} onChange={(event) => setPassword(event.target.value)} /></label>
+      {error && <p className="admin-login-error" role="alert">{error}</p>}
+      <button type="submit" disabled={busy}>{busy ? "Đang xác thực…" : "Đăng nhập"}</button>
     </form>
-    <p className="login-note">Khu vực dành cho quản trị viên.</p>
-  </div>;
+  </section>;
 }

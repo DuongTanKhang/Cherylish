@@ -36,7 +36,7 @@ export default function PromotionCreateWorkspace({ existingCodes, products, cate
   const [selectedProduct, setSelectedProduct] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const promotionCategories = categories.filter((item) => item.status === "Hoạt động" && item.kind !== "Khác");
+  const promotionCategories = categories.filter((item) => item.status === "Hoạt động");
   const selectedCategory = promotionCategories.find((item) => item.id === draft.category);
   const applicableCategoryIds = useMemo(() => {
     if (!selectedCategory) return new Set<string>();
@@ -70,7 +70,7 @@ export default function PromotionCreateWorkspace({ existingCodes, products, cate
     if (draft.type === "percent" && (Number(draft.value) <= 0 || Number(draft.value) > 100)) { setError("Mức giảm phải lớn hơn 0% và không vượt quá 100%."); return; }
     if (draft.products === "specific" && !previewProducts.some((item) => item.id === selectedProduct)) { setSelectedProduct(""); setError("SKU đã hết tồn hoặc không còn phù hợp. Hãy chọn một SKU còn hàng."); return; }
     const used = new Set(existingCodes.map((code) => code.toUpperCase()));
-    const initialCode = (draft.code || `GEME${Date.now().toString().slice(-5)}`).toUpperCase().replace(/[^A-Z0-9_-]/g, "");
+    const initialCode = (draft.code || `Cherylish${Date.now().toString().slice(-5)}`).toUpperCase().replace(/[^A-Z0-9_-]/g, "");
     let code = initialCode;
     let number = 2;
     while (used.has(code)) code = `${initialCode}${number++}`;
@@ -118,7 +118,7 @@ export default function PromotionCreateWorkspace({ existingCodes, products, cate
 
         <section className="promotion-create-section">
           <h2><i>3</i> 3. Điều kiện áp dụng</h2>
-          <div className="create-radio-line"><label><input type="radio" name="condition" checked={draft.condition === "none"} onChange={() => set("condition", "none")}/>Không có điều kiện</label><label><input type="radio" name="condition" checked={draft.condition === "minimum"} onChange={() => set("condition", "minimum")}/>Đơn hàng tối thiểu</label><input className="condition-amount" disabled={draft.condition !== "minimum"} type="number" value={draft.minOrder} onChange={(event) => set("minOrder", event.target.value)}/><label><input type="radio" name="condition" checked={draft.condition === "member"} onChange={() => set("condition", "member")}/>Áp dụng cho thành viên GEME</label></div>
+          <div className="create-radio-line"><label><input type="radio" name="condition" checked={draft.condition === "none"} onChange={() => set("condition", "none")}/>Không có điều kiện</label><label><input type="radio" name="condition" checked={draft.condition === "minimum"} onChange={() => set("condition", "minimum")}/>Đơn hàng tối thiểu</label><input className="condition-amount" disabled={draft.condition !== "minimum"} type="number" value={draft.minOrder} onChange={(event) => set("minOrder", event.target.value)}/><label><input type="radio" name="condition" checked={draft.condition === "member"} onChange={() => set("condition", "member")}/>Áp dụng cho thành viên Cherylish</label></div>
         </section>
 
         <section className="promotion-create-section">

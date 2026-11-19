@@ -62,7 +62,17 @@ type NewArrivalsMedia = {
   videoPosterUrl: string;
   videoAltText: string;
 };
-type SiteContent = { banners?: unknown; footerContent?: unknown; catalogEditorialPromos?: unknown; newArrivalsMedia?: unknown };
+type ShopMenuEditorialMedia = {
+  enabled: boolean;
+  kind: "image" | "video";
+  imageUrl: string;
+  videoUrl: string;
+  posterUrl: string;
+  altText: string;
+  topLine: string;
+  bottomLine: string;
+};
+type SiteContent = { banners?: unknown; footerContent?: unknown; catalogEditorialPromos?: unknown; newArrivalsMedia?: unknown; shopMenuEditorial?: unknown };
 type CategoryBanner = { id: string; name: string; slug?: string; bannerUrl?: string | null };
 
 const defaultNewArrivalsMedia: NewArrivalsMedia = {
@@ -75,6 +85,31 @@ const defaultNewArrivalsMedia: NewArrivalsMedia = {
   videoAltText: "",
 };
 
+const defaultShopMenuEditorialMedia: ShopMenuEditorialMedia = {
+  enabled: true,
+  kind: "image",
+  imageUrl: "/images/geme-ring-editorial.png",
+  videoUrl: "",
+  posterUrl: "/images/geme-ring-editorial.png",
+  altText: "Nhẫn kim cương Cherylish trên nền lụa sáng",
+  topLine: "TIMELESS",
+  bottomLine: "ELEGANCE",
+};
+
+function normalizeShopMenuEditorialMedia(value: unknown): ShopMenuEditorialMedia {
+  const item = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  return {
+    enabled: item.enabled !== false,
+    kind: item.kind === "video" ? "video" : "image",
+    imageUrl: typeof item.imageUrl === "string" ? item.imageUrl : defaultShopMenuEditorialMedia.imageUrl,
+    videoUrl: typeof item.videoUrl === "string" ? item.videoUrl : "",
+    posterUrl: typeof item.posterUrl === "string" ? item.posterUrl : defaultShopMenuEditorialMedia.posterUrl,
+    altText: typeof item.altText === "string" ? item.altText : defaultShopMenuEditorialMedia.altText,
+    topLine: typeof item.topLine === "string" ? item.topLine : defaultShopMenuEditorialMedia.topLine,
+    bottomLine: typeof item.bottomLine === "string" ? item.bottomLine : defaultShopMenuEditorialMedia.bottomLine,
+  };
+}
+
 function normalizeNewArrivalsMedia(value: unknown): NewArrivalsMedia {
   const item = value && typeof value === "object" ? value as Record<string, unknown> : {};
   return Object.fromEntries(Object.keys(defaultNewArrivalsMedia).map((key) => [
@@ -85,7 +120,7 @@ function normalizeNewArrivalsMedia(value: unknown): NewArrivalsMedia {
 
 const defaultCatalogEditorialPromos: CatalogEditorialPromo[] = [
   { id: "green-edit", kind: "image", enabled: true, sortOrder: 1, placement: "after-4", title: "THE GREEN EDIT", description: "Một sắc xanh. Nhiều cách thể hiện.", ctaLabel: "Khám phá →", imageUrl: "", posterUrl: "", videoUrl: "", altText: "", href: "", focusX: 50, focusY: 50 },
-  { id: "geme-on-you", kind: "video", enabled: true, sortOrder: 2, placement: "after-12", title: "GEME TRÊN BẠN", description: "Những chi tiết làm nên dấu ấn.", ctaLabel: "Xem câu chuyện →", imageUrl: "", posterUrl: "", videoUrl: "", altText: "", href: "", focusX: 50, focusY: 50 },
+  { id: "geme-on-you", kind: "video", enabled: true, sortOrder: 2, placement: "after-12", title: "Cherylish TRÊN BẠN", description: "Những chi tiết làm nên dấu ấn.", ctaLabel: "Xem câu chuyện →", imageUrl: "", posterUrl: "", videoUrl: "", altText: "", href: "", focusX: 50, focusY: 50 },
   { id: "stone-to-jewelry", kind: "video", enabled: true, sortOrder: 3, placement: "after-18", title: "TỪ ĐÁ ĐẾN TRANG SỨC", description: "Vẻ đẹp qua từng chi tiết.", ctaLabel: "", imageUrl: "", posterUrl: "", videoUrl: "", altText: "", href: "", focusX: 50, focusY: 50 },
 ];
 
@@ -123,18 +158,18 @@ function canonicalBannerPosition(position: unknown) {
     "tài khoản": "Đăng nhập - Banner",
     "tài khoản - banner": "Đăng nhập - Banner",
     "liên hệ - cta": "Liên hệ - Banner tư vấn",
-    "về geme - cuối trang": "Về GEME - Banner cuối",
+    "về geme - cuối trang": "Về Cherylish - Banner cuối",
     "new arrivals - cuối trang": "New Arrivals - Banner cuối",
   };
   return aliases[normalized.toLocaleLowerCase("vi")] || normalized;
 }
 
 const carouselCopy = [
-  { eyebrow: "COLLECTION / GEME", title: "Vẻ đẹp tự nhiên, dấu ấn riêng", description: "Mỗi thiết kế lưu giữ nét tinh tế của bạc và vẻ đẹp độc đáo từ đá quý thiên nhiên.", ctaLabel: "Khám phá trang sức", href: "#san-pham" },
-  { eyebrow: "COLLECTION / GEME", title: "Tất cả sản phẩm", description: "Trang sức bạc tinh tế kết hợp đá quý thiên nhiên, lưu giữ vẻ đẹp riêng trong từng khoảnh khắc.", ctaLabel: "Khám phá trang sức", href: "#san-pham" },
-  { eyebrow: "GEME / NATURAL GEMSTONES", title: "Sắc xanh đầy cuốn hút", description: "Những viên đá quý được chọn lọc để tôn lên vẻ đẹp riêng trong từng thiết kế.", ctaLabel: "Xem bộ sưu tập", href: "#san-pham" },
-  { eyebrow: "GEME / FINE JEWELRY", title: "Sắc màu của riêng bạn", description: "Chọn sắc đá yêu thích và tìm thiết kế đồng hành cùng phong cách của bạn.", ctaLabel: "Khám phá trang sức", href: "#san-pham" },
-  { eyebrow: "COLLECTION / GEME", title: "Tinh tế trong từng chi tiết", description: "Dấu ấn thủ công và vẻ đẹp thiên nhiên gặp nhau trong những món trang sức GEME.", ctaLabel: "Khám phá trang sức", href: "#san-pham" },
+  { eyebrow: "COLLECTION / Cherylish", title: "Vẻ đẹp tự nhiên, dấu ấn riêng", description: "Mỗi thiết kế lưu giữ nét tinh tế của bạc và vẻ đẹp độc đáo từ đá quý thiên nhiên.", ctaLabel: "Khám phá trang sức", href: "#san-pham" },
+  { eyebrow: "COLLECTION / Cherylish", title: "Tất cả sản phẩm", description: "Trang sức bạc tinh tế kết hợp đá quý thiên nhiên, lưu giữ vẻ đẹp riêng trong từng khoảnh khắc.", ctaLabel: "Khám phá trang sức", href: "#san-pham" },
+  { eyebrow: "Cherylish / NATURAL GEMSTONES", title: "Sắc xanh đầy cuốn hút", description: "Những viên đá quý được chọn lọc để tôn lên vẻ đẹp riêng trong từng thiết kế.", ctaLabel: "Xem bộ sưu tập", href: "#san-pham" },
+  { eyebrow: "Cherylish / FINE JEWELRY", title: "Sắc màu của riêng bạn", description: "Chọn sắc đá yêu thích và tìm thiết kế đồng hành cùng phong cách của bạn.", ctaLabel: "Khám phá trang sức", href: "#san-pham" },
+  { eyebrow: "COLLECTION / Cherylish", title: "Tinh tế trong từng chi tiết", description: "Dấu ấn thủ công và vẻ đẹp thiên nhiên gặp nhau trong những món trang sức Cherylish.", ctaLabel: "Khám phá trang sức", href: "#san-pham" },
 ];
 
 const currentHomePositions = [
@@ -144,10 +179,10 @@ const currentHomePositions = [
   "Trang chủ - THE GREEN EDIT - Vân đá",
   "Trang chủ - THE GREEN EDIT - Vòng tay",
   "Trang chủ - Câu chuyện",
-  "Trang chủ - GEME trên bạn - Dây chuyền",
-  "Trang chủ - GEME trên bạn - Vòng tay",
-  "Trang chủ - GEME trên bạn - Nhẫn",
-  "Trang chủ - GEME trên bạn - Khuyên tai",
+  "Trang chủ - Cherylish trên bạn - Dây chuyền",
+  "Trang chủ - Cherylish trên bạn - Vòng tay",
+  "Trang chủ - Cherylish trên bạn - Nhẫn",
+  "Trang chủ - Cherylish trên bạn - Khuyên tai",
 ];
 
 // Keep this list aligned with the banner positions the storefront actually reads.
@@ -159,9 +194,9 @@ const websiteBannerPositions = [
   "Trang sức - Carousel 3",
   "Trang sức - Carousel 4",
   "Trang sức - Carousel 5",
-  "Về GEME - Hero",
-  "Về GEME - Câu chuyện",
-  "Về GEME - Sứ mệnh",
+  "Về Cherylish - Hero",
+  "Về Cherylish - Câu chuyện",
+  "Về Cherylish - Sứ mệnh",
   "New Arrivals - Hero",
   "Đăng nhập - Banner",
 ];
@@ -174,20 +209,20 @@ const fallbackBanners: Banner[] = [
   ["Trang chủ - THE GREEN EDIT - Vân đá", "THE GREEN EDIT · Vân đá", "/images/home/geme/04-green-edit-texture.webp"],
   ["Trang chủ - THE GREEN EDIT - Vòng tay", "THE GREEN EDIT · Vòng tay", "/images/home/geme/05-green-edit-wrist.webp"],
   ["Trang chủ · Câu chuyện", "Trang chủ - Câu chuyện", "/images/home/geme/06-brand-craft.webp"],
-  ["Trang chủ - GEME trên bạn - Dây chuyền", "GEME trên bạn · Dây chuyền", "/images/home/geme/07-lifestyle-necklace.webp"],
-  ["Trang chủ - GEME trên bạn - Vòng tay", "GEME trên bạn · Vòng tay", "/images/home/geme/08-lifestyle-bangle.webp"],
-  ["Trang chủ - GEME trên bạn - Nhẫn", "GEME trên bạn · Nhẫn", "/images/home/geme/09-lifestyle-ring.webp"],
-  ["Trang chủ - GEME trên bạn - Khuyên tai", "GEME trên bạn · Khuyên tai", "/images/home/geme/10-lifestyle-earring.webp"],
+  ["Trang chủ - Cherylish trên bạn - Dây chuyền", "Cherylish trên bạn · Dây chuyền", "/images/home/geme/07-lifestyle-necklace.webp"],
+  ["Trang chủ - Cherylish trên bạn - Vòng tay", "Cherylish trên bạn · Vòng tay", "/images/home/geme/08-lifestyle-bangle.webp"],
+  ["Trang chủ - Cherylish trên bạn - Nhẫn", "Cherylish trên bạn · Nhẫn", "/images/home/geme/09-lifestyle-ring.webp"],
+  ["Trang chủ - Cherylish trên bạn - Khuyên tai", "Cherylish trên bạn · Khuyên tai", "/images/home/geme/10-lifestyle-earring.webp"],
   ["Trang sức · Carousel 1", "Trang sức - Banner 1", "/assets/collection-jewelry-banner-1.png"],
   ["Trang sức · Carousel 2", "Trang sức - Banner 2", "/assets/collection-jewelry-banner-2.png"],
   ["Trang sức · Carousel 3", "Trang sức - Banner 3", "/assets/collection-jewelry-banner-3.png"],
   ["Trang sức · Carousel 4", "Trang sức - Banner 4", "/assets/collection-jewelry-banner-4.png"],
   ["Trang sức · Carousel 5", "Trang sức - Banner 5", "/assets/collection-jewelry-banner-5.png"],
-  ["Về GEME · Hero", "Về GEME - Hero", "/assets/about-geme-hero.png"],
-  ["Về GEME · Câu chuyện", "Về GEME - Câu chuyện", "/assets/about-geme-intro.png"],
-  ["Về GEME · Sứ mệnh", "Về GEME - Sứ mệnh", "/assets/about-geme-opal.png"],
+  ["Về Cherylish · Hero", "Về Cherylish - Hero", "/assets/about-geme-hero.png"],
+  ["Về Cherylish · Câu chuyện", "Về Cherylish - Câu chuyện", "/assets/about-geme-intro.png"],
+  ["Về Cherylish · Sứ mệnh", "Về Cherylish - Sứ mệnh", "/assets/about-geme-opal.png"],
   ["New Arrivals", "New Arrivals - Hero", "/assets/new-arrivals-hero.png"],
-  ["Đăng nhập GEME", "Đăng nhập - Banner", "/assets/category-jewelry-final.jpg"],
+  ["Đăng nhập Cherylish", "Đăng nhập - Banner", "/assets/category-jewelry-final.jpg"],
 ].map(([position, name, imageUrl], index) => {
   const canonicalPosition = canonicalBannerPosition(position);
   const carouselIndex = Number(canonicalPosition.match(/^Trang sức - Carousel ([1-5])$/)?.[1] || 0) - 1;
@@ -195,12 +230,12 @@ const fallbackBanners: Banner[] = [
 });
 const loginBannerFallback: Banner = {
   id: "seed-login-banner",
-  name: "Đăng nhập GEME",
+  name: "Đăng nhập Cherylish",
   position: "Đăng nhập - Banner",
   imageUrl: "/assets/category-jewelry-final.jpg",
   eyebrow: "KHÔNG GIAN CỦA BẠN",
-  title: "Chào mừng bạn trở lại GEME",
-  description: "Tiếp tục hành trình khám phá những viên đá quý độc đáo cùng GEME.",
+  title: "Chào mừng bạn trở lại Cherylish",
+  description: "Tiếp tục hành trình khám phá những viên đá quý độc đáo cùng Cherylish.",
   ctaLabel: "",
   season: "",
   startAt: "",
@@ -222,7 +257,7 @@ const defaultFooter: FooterContent = {
   paymentMethods: ["VISA", "Mastercard", "MoMo", "ZaloPay"],
   logoImageUrl: "",
   backgroundImageUrl: "",
-  copyright: "© 2025 GEME. All rights reserved.",
+  copyright: "© 2025 Cherylish. All rights reserved.",
 };
 
 function normalizeBanners(value: unknown): Banner[] {
@@ -261,7 +296,12 @@ function apiImageUrl(url: string) {
   // them a dedicated same-origin route so the admin can preview them reliably.
   if (url.startsWith("/assets/")) return `/geme-assets${url.slice("/assets".length)}`;
   if (url.startsWith("/images/")) return `/geme-images${url.slice("/images".length)}`;
-  if (url.startsWith("/media/")) return url;
+  // The Admin and API run on separate hosts in staging/production. A bare
+  // `/media/:id` URL resolves against the Admin host, which serves the Next.js
+  // app and returns 404/500 instead of the API asset. Route previews through
+  // the authenticated same-origin Admin proxy so they work on split domains
+  // and in local development alike.
+  if (url.startsWith("/media/")) return `${apiBaseUrl}${url}`;
   return `${apiBaseUrl}/${url.replace(/^\//, "")}`;
 }
 
@@ -330,7 +370,7 @@ async function uploadVideo(file: File, alt: string) {
     body: JSON.stringify({ filename: file.name, mimeType, base64: dataUrl.slice(dataUrl.indexOf(",") + 1), alt }),
   });
   if (!response.ok) {
-    let message = "Không thể lưu video vào thư viện GEME.";
+    let message = "Không thể lưu video vào thư viện Cherylish.";
     try { const detail = await response.json(); message = detail.message || message; } catch { /* keep default */ }
     throw new Error(Array.isArray(message) ? message.join(" ") : message);
   }
@@ -339,7 +379,7 @@ async function uploadVideo(file: File, alt: string) {
 }
 
 export default function BannerFooterWorkspace({ onNotify }: { onNotify: (message: string) => void }) {
-  const [tab, setTab] = useState<"banners" | "footer" | "catalog" | "library">("banners");
+  const [tab, setTab] = useState<"banners" | "footer" | "catalog" | "menu" | "library">("banners");
   const [libraryKind, setLibraryKind] = useState<"banner" | "footer">("banner");
   const [zoomImage, setZoomImage] = useState<{ url: string; name: string } | null>(null);
   const [banners, setBanners] = useState<Banner[]>(fallbackBanners);
@@ -349,6 +389,7 @@ export default function BannerFooterWorkspace({ onNotify }: { onNotify: (message
   const [footer, setFooter] = useState<FooterContent>(defaultFooter);
   const [catalogPromos, setCatalogPromos] = useState<CatalogEditorialPromo[]>(defaultCatalogEditorialPromos);
   const [newArrivalsMedia, setNewArrivalsMedia] = useState<NewArrivalsMedia>(defaultNewArrivalsMedia);
+  const [shopMenuEditorialMedia, setShopMenuEditorialMedia] = useState<ShopMenuEditorialMedia>(defaultShopMenuEditorialMedia);
   const [filterPosition, setFilterPosition] = useState("Tất cả vị trí");
   const [filterSeason, setFilterSeason] = useState("Tất cả mùa");
   const [saving, setSaving] = useState(false);
@@ -374,7 +415,9 @@ export default function BannerFooterWorkspace({ onNotify }: { onNotify: (message
     ...catalogPromos.flatMap((item) => [item.imageUrl && { url: item.imageUrl, name: `${item.title || item.id} · Ảnh`, detail: "Trang sản phẩm · Nội dung biên tập", season: "" }, item.posterUrl && { url: item.posterUrl, name: `${item.title || item.id} · Poster video`, detail: "Trang sản phẩm · Poster video", season: "" }].filter((asset): asset is { url: string; name: string; detail: string; season: string } => Boolean(asset))),
     newArrivalsMedia.editorialImageUrl && { url: newArrivalsMedia.editorialImageUrl, name: "New Arrivals · Ảnh biên tập", detail: "New Arrivals · Ảnh", season: "" },
     newArrivalsMedia.videoPosterUrl && { url: newArrivalsMedia.videoPosterUrl, name: "New Arrivals · Poster video", detail: "New Arrivals · Poster video", season: "" },
-  ].filter((asset): asset is { url: string; name: string; detail: string; season: string } => Boolean(asset)), [managedBanners, categoryBanners, catalogPromos, newArrivalsMedia]);
+    shopMenuEditorialMedia.imageUrl && { url: shopMenuEditorialMedia.imageUrl, name: "Menu Shop · Ảnh", detail: "Mega menu · Ảnh quảng bá", season: "" },
+    shopMenuEditorialMedia.posterUrl && { url: shopMenuEditorialMedia.posterUrl, name: "Menu Shop · Poster video", detail: "Mega menu · Poster video", season: "" },
+  ].filter((asset): asset is { url: string; name: string; detail: string; season: string } => Boolean(asset)), [managedBanners, categoryBanners, catalogPromos, newArrivalsMedia, shopMenuEditorialMedia]);
   const footerImages = useMemo(() => [footer.logoImageUrl && { url: footer.logoImageUrl, name: "Logo footer", detail: "Thương hiệu", season: "" }, footer.backgroundImageUrl && { url: footer.backgroundImageUrl, name: "Ảnh nền footer", detail: "Ảnh chân trang", season: "" }].filter((item): item is { url: string; name: string; detail: string; season: string } => Boolean(item)), [footer.logoImageUrl, footer.backgroundImageUrl]);
   const galleryImages = libraryKind === "banner" ? bannerImages : footerImages;
   const filteredGallery = libraryKind === "banner" && filterSeason !== "Tất cả mùa" ? galleryImages.filter((item) => item.season === filterSeason) : galleryImages;
@@ -393,7 +436,7 @@ export default function BannerFooterWorkspace({ onNotify }: { onNotify: (message
         return websiteBannerPositionSet.has(position) ? [position] : [];
       }) : []);
       const hasSavedAllWebsiteSlots = websiteBannerPositions.every((position) => savedWebsitePositions.has(position));
-      setBanners(nextBanners); setSelectedId(firstManagedBanner?.id || ""); setDraft(firstManagedBanner || emptyBanner()); setFooter(normalizeFooter(settings.footerContent)); setCatalogPromos(normalizeCatalogEditorialPromos(settings.catalogEditorialPromos)); setNewArrivalsMedia(normalizeNewArrivalsMedia(settings.newArrivalsMedia)); setBannerConfigSaved(hasSavedAllWebsiteSlots); setLoaded(true);
+      setBanners(nextBanners); setSelectedId(firstManagedBanner?.id || ""); setDraft(firstManagedBanner || emptyBanner()); setFooter(normalizeFooter(settings.footerContent)); setCatalogPromos(normalizeCatalogEditorialPromos(settings.catalogEditorialPromos)); setNewArrivalsMedia(normalizeNewArrivalsMedia(settings.newArrivalsMedia)); setShopMenuEditorialMedia(normalizeShopMenuEditorialMedia(settings.shopMenuEditorial)); setBannerConfigSaved(hasSavedAllWebsiteSlots); setLoaded(true);
     }).catch(() => { if (alive) { setLoaded(true); notifyRef.current("Không tải được cấu hình nội dung từ database."); } });
     return () => { alive = false; };
   }, []);
@@ -438,7 +481,7 @@ export default function BannerFooterWorkspace({ onNotify }: { onNotify: (message
   const pickBannerImage = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]; event.target.value = ""; if (!file) return;
     setUploading(true);
-    try { const imageUrl = await uploadImage(file, draft.name || "Banner GEME"); setDraft((old) => ({ ...old, imageUrl })); onNotify("Ảnh đã được nén và lưu vào thư viện media."); }
+    try { const imageUrl = await uploadImage(file, draft.name || "Banner Cherylish"); setDraft((old) => ({ ...old, imageUrl })); onNotify("Ảnh đã được nén và lưu vào thư viện media."); }
     catch (error) { onNotify(error instanceof Error ? error.message : "Không thể lưu ảnh."); }
     finally { setUploading(false); }
   };
@@ -453,7 +496,7 @@ export default function BannerFooterWorkspace({ onNotify }: { onNotify: (message
   const uploadFooterImage = async (field: "logoImageUrl" | "backgroundImageUrl", event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]; event.target.value = ""; if (!file) return;
     setUploading(true);
-    try { const imageUrl = await uploadImage(file, field === "logoImageUrl" ? "Logo footer GEME" : "Ảnh nền footer GEME"); setFooter((old) => ({ ...old, [field]: imageUrl })); onNotify("Ảnh footer đã được lưu vào thư viện media. Bấm Lưu footer để áp dụng."); }
+    try { const imageUrl = await uploadImage(file, field === "logoImageUrl" ? "Logo footer Cherylish" : "Ảnh nền footer Cherylish"); setFooter((old) => ({ ...old, [field]: imageUrl })); onNotify("Ảnh footer đã được lưu vào thư viện media. Bấm Lưu footer để áp dụng."); }
     catch (error) { onNotify(error instanceof Error ? error.message : "Không thể lưu ảnh footer."); }
     finally { setUploading(false); }
   };
@@ -475,9 +518,9 @@ export default function BannerFooterWorkspace({ onNotify }: { onNotify: (message
     const promo = catalogPromos.find((item) => item.id === promoId);
     setUploading(true);
     try {
-      const videoUrl = await uploadVideo(file, `${promo?.title || "Video trang sản phẩm"} GEME`);
+      const videoUrl = await uploadVideo(file, `${promo?.title || "Video trang sản phẩm"} Cherylish`);
       setCatalogPromos((items) => items.map((item) => item.id === promoId ? { ...item, videoUrl } : item));
-      onNotify("Video đã lưu trong thư viện GEME. Bấm Lưu ảnh & video để áp dụng.");
+      onNotify("Video đã lưu trong thư viện Cherylish. Bấm Lưu ảnh & video để áp dụng.");
     } catch (error) { onNotify(error instanceof Error ? error.message : "Không thể lưu video."); }
     finally { setUploading(false); }
   };
@@ -486,9 +529,9 @@ export default function BannerFooterWorkspace({ onNotify }: { onNotify: (message
     const file = event.target.files?.[0]; event.target.value = ""; if (!file) return;
     setUploading(true);
     try {
-      const editorialImageUrl = await uploadImage(file, newArrivalsMedia.editorialAltText || "Ảnh biên tập New Arrivals GEME");
+      const editorialImageUrl = await uploadImage(file, newArrivalsMedia.editorialAltText || "Ảnh biên tập New Arrivals Cherylish");
       setNewArrivalsMedia((old) => ({ ...old, editorialImageUrl }));
-      onNotify("Ảnh New Arrivals đã lưu trong thư viện GEME. Bấm Lưu ảnh & video để áp dụng.");
+      onNotify("Ảnh New Arrivals đã lưu trong thư viện Cherylish. Bấm Lưu ảnh & video để áp dụng.");
     } catch (error) { onNotify(error instanceof Error ? error.message : "Không thể lưu ảnh."); }
     finally { setUploading(false); }
   };
@@ -497,9 +540,9 @@ export default function BannerFooterWorkspace({ onNotify }: { onNotify: (message
     const file = event.target.files?.[0]; event.target.value = ""; if (!file) return;
     setUploading(true);
     try {
-      const videoPosterUrl = await uploadImage(file, newArrivalsMedia.videoAltText || "Poster video New Arrivals GEME");
+      const videoPosterUrl = await uploadImage(file, newArrivalsMedia.videoAltText || "Poster video New Arrivals Cherylish");
       setNewArrivalsMedia((old) => ({ ...old, videoPosterUrl }));
-      onNotify("Poster video New Arrivals đã lưu trong thư viện GEME. Bấm Lưu ảnh & video để áp dụng.");
+      onNotify("Poster video New Arrivals đã lưu trong thư viện Cherylish. Bấm Lưu ảnh & video để áp dụng.");
     } catch (error) { onNotify(error instanceof Error ? error.message : "Không thể lưu poster."); }
     finally { setUploading(false); }
   };
@@ -508,10 +551,43 @@ export default function BannerFooterWorkspace({ onNotify }: { onNotify: (message
     const file = event.target.files?.[0]; event.target.value = ""; if (!file) return;
     setUploading(true);
     try {
-      const videoUrl = await uploadVideo(file, newArrivalsMedia.videoAltText || "Video New Arrivals GEME");
+      const videoUrl = await uploadVideo(file, newArrivalsMedia.videoAltText || "Video New Arrivals Cherylish");
       setNewArrivalsMedia((old) => ({ ...old, videoUrl }));
-      onNotify("Video New Arrivals đã lưu trong thư viện GEME. Bấm Lưu ảnh & video để áp dụng.");
+      onNotify("Video New Arrivals đã lưu trong thư viện Cherylish. Bấm Lưu ảnh & video để áp dụng.");
     } catch (error) { onNotify(error instanceof Error ? error.message : "Không thể lưu video."); }
+    finally { setUploading(false); }
+  };
+
+  const uploadShopMenuImage = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]; event.target.value = ""; if (!file) return;
+    setUploading(true);
+    try {
+      const imageUrl = await uploadImage(file, shopMenuEditorialMedia.altText || "Ảnh quảng bá menu Shop Cherylish");
+      setShopMenuEditorialMedia((old) => ({ ...old, imageUrl }));
+      onNotify("Ảnh menu đã lưu trong thư viện media. Bấm Lưu nội dung menu để áp dụng.");
+    } catch (error) { onNotify(error instanceof Error ? error.message : "Không lưu được ảnh menu."); }
+    finally { setUploading(false); }
+  };
+
+  const uploadShopMenuVideo = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]; event.target.value = ""; if (!file) return;
+    setUploading(true);
+    try {
+      const videoUrl = await uploadVideo(file, shopMenuEditorialMedia.altText || "Video quảng bá menu Shop Cherylish");
+      setShopMenuEditorialMedia((old) => ({ ...old, videoUrl }));
+      onNotify("Video menu đã lưu trong thư viện media. Bấm Lưu nội dung menu để áp dụng.");
+    } catch (error) { onNotify(error instanceof Error ? error.message : "Không lưu được video menu."); }
+    finally { setUploading(false); }
+  };
+
+  const uploadShopMenuPoster = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]; event.target.value = ""; if (!file) return;
+    setUploading(true);
+    try {
+      const posterUrl = await uploadImage(file, shopMenuEditorialMedia.altText || "Poster video menu Shop Cherylish");
+      setShopMenuEditorialMedia((old) => ({ ...old, posterUrl }));
+      onNotify("Poster video menu đã lưu. Bấm Lưu nội dung menu để áp dụng.");
+    } catch (error) { onNotify(error instanceof Error ? error.message : "Không lưu được poster menu."); }
     finally { setUploading(false); }
   };
 
@@ -535,6 +611,15 @@ export default function BannerFooterWorkspace({ onNotify }: { onNotify: (message
     finally { setSaving(false); }
   };
 
+  const saveShopMenuEditorialMedia = async () => {
+    setSaving(true);
+    try {
+      await saveSettings({ shopMenuEditorial: shopMenuEditorialMedia });
+      onNotify("Ảnh/video quảng bá trong menu Shop đã được lưu.");
+    } catch (error) { onNotify(error instanceof Error ? error.message : "Không lưu được nội dung menu Shop."); }
+    finally { setSaving(false); }
+  };
+
   const updateCatalogPromo = <K extends keyof CatalogEditorialPromo>(promoId: CatalogEditorialPromo["id"], field: K, value: CatalogEditorialPromo[K]) => {
     setCatalogPromos((items) => items.map((item) => item.id === promoId ? { ...item, [field]: value } : item));
   };
@@ -546,7 +631,7 @@ export default function BannerFooterWorkspace({ onNotify }: { onNotify: (message
 
   return <section className="bf-workspace">
     <div className="page-heading bf-heading"><div><h1>Quản lý Banner &amp; Footer</h1><p>Cập nhật banner và nội dung chân trang; ảnh được lưu bền vững trong thư viện media.</p></div>{tab === "banners" && <div className="bf-heading-actions"><button className="button button-quiet" onClick={editLoginBanner}>Chỉnh ảnh đăng nhập</button><button className="button button-primary" onClick={beginCreate}>＋ Thêm banner mới</button></div>}</div>
-    <div className="bf-tabs"><button className={tab === "banners" ? "active" : ""} onClick={() => setTab("banners")}>▧ &nbsp; Banner</button><button className={tab === "footer" ? "active" : ""} onClick={() => setTab("footer")}>▤ &nbsp; Footer</button><button className={tab === "catalog" ? "active" : ""} onClick={() => setTab("catalog")}>▧ &nbsp; Ảnh &amp; video Trang sức / New Arrivals</button><button className={tab === "library" ? "active" : ""} onClick={() => setTab("library")}>▦ &nbsp; Thư viện ảnh</button></div>
+    <div className="bf-tabs"><button className={tab === "banners" ? "active" : ""} onClick={() => setTab("banners")}>▧ &nbsp; Banner</button><button className={tab === "footer" ? "active" : ""} onClick={() => setTab("footer")}>▤ &nbsp; Footer</button><button className={tab === "catalog" ? "active" : ""} onClick={() => setTab("catalog")}>▧ &nbsp; Ảnh &amp; video Trang sức / New Arrivals</button><button className={tab === "menu" ? "active" : ""} onClick={() => setTab("menu")}>▣ &nbsp; Ảnh &amp; video menu Shop</button><button className={tab === "library" ? "active" : ""} onClick={() => setTab("library")}>▦ &nbsp; Thư viện ảnh</button></div>
 
     {tab === "banners" ? <div className="bf-banner-layout">
       <section className="bf-list-panel"><div className="bf-list-heading"><div><h2>Danh sách banner</h2><p>Quản lý ảnh banner theo vị trí hiển thị trên website.</p></div><label><span className="sr-only">Lọc vị trí</span><select value={filterPosition} onChange={(event) => setFilterPosition(event.target.value)}><option>Tất cả vị trí</option>{positions.map((position) => <option key={position}>{position}</option>)}</select></label><label><span className="sr-only">Lọc mùa</span><select value={filterSeason} onChange={(event) => setFilterSeason(event.target.value)}><option>Tất cả mùa</option>{seasons.map((season) => <option key={season}>{season}</option>)}</select></label></div>
@@ -557,8 +642,8 @@ export default function BannerFooterWorkspace({ onNotify }: { onNotify: (message
       <aside className="bf-editor-panel"><h2>{banners.some((item) => item.id === draft.id) ? "Chỉnh sửa banner" : "Thêm banner"}</h2><p>Thay đổi hiển thị ở các trang dùng vị trí tương ứng.</p>
         <label className="bf-field"><span>Tên banner</span><input value={draft.name} onChange={(event) => setDraft((old) => ({ ...old, name: event.target.value }))} placeholder="Ví dụ: Banner trang chủ mùa xuân"/></label>
         <label className="bf-field"><span>Vị trí hiển thị</span><select value={draft.position} onChange={(event) => setDraft((old) => ({ ...old, position: event.target.value }))}>{websiteBannerPositions.map((position) => <option key={position}>{position}</option>)}</select></label>
-        <div className="bf-field"><span>Ảnh banner</span><span className="bf-image-picker">{draft.imageUrl ? <img src={apiImageUrl(draft.imageUrl)} alt="Xem trước banner"/> : <span className="bf-image-empty">Chưa chọn ảnh banner</span>}</span><label className="bf-image-upload-control"><input type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => void pickBannerImage(event)} disabled={uploading}/><span>{uploading ? "Đang tải ảnh…" : draft.imageUrl ? "Chọn ảnh khác" : "Tải ảnh banner"}</span><small>PNG, JPG hoặc WebP</small></label>{draft.imageUrl && <button type="button" className="bf-preview-zoom" onClick={() => setZoomImage({ url: apiImageUrl(draft.imageUrl), name: draft.name || "Banner GEME" })}>Phóng to ảnh đang chọn</button>}</div>
-        {isJewelryCarousel && <div className="bf-banner-copy-fields"><p>Nội dung hiển thị trên slide (để trống sẽ dùng nội dung mặc định của GEME).</p><div className="bf-two-fields"><label className="bf-field"><span>Nhãn nhỏ</span><input value={draft.eyebrow || ""} onChange={(event) => setDraft((old) => ({ ...old, eyebrow: event.target.value }))} placeholder="COLLECTION / GEME"/></label><label className="bf-field"><span>Tiêu đề</span><input value={draft.title || ""} onChange={(event) => setDraft((old) => ({ ...old, title: event.target.value }))} placeholder="Tất cả sản phẩm"/></label></div><label className="bf-field"><span>Mô tả</span><textarea rows={3} value={draft.description || ""} onChange={(event) => setDraft((old) => ({ ...old, description: event.target.value }))} placeholder="Trang sức bạc tinh tế kết hợp đá quý thiên nhiên…"/></label><label className="bf-field"><span>Nhãn liên kết</span><input value={draft.ctaLabel || ""} onChange={(event) => setDraft((old) => ({ ...old, ctaLabel: event.target.value }))} placeholder="Khám phá trang sức"/></label></div>}
+        <div className="bf-field"><span>Ảnh banner</span><span className="bf-image-picker">{draft.imageUrl ? <img src={apiImageUrl(draft.imageUrl)} alt="Xem trước banner"/> : <span className="bf-image-empty">Chưa chọn ảnh banner</span>}</span><label className="bf-image-upload-control"><input type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => void pickBannerImage(event)} disabled={uploading}/><span>{uploading ? "Đang tải ảnh…" : draft.imageUrl ? "Chọn ảnh khác" : "Tải ảnh banner"}</span><small>PNG, JPG hoặc WebP</small></label>{draft.imageUrl && <button type="button" className="bf-preview-zoom" onClick={() => setZoomImage({ url: apiImageUrl(draft.imageUrl), name: draft.name || "Banner Cherylish" })}>Phóng to ảnh đang chọn</button>}</div>
+        {isJewelryCarousel && <div className="bf-banner-copy-fields"><p>Nội dung hiển thị trên slide (để trống sẽ dùng nội dung mặc định của Cherylish).</p><div className="bf-two-fields"><label className="bf-field"><span>Nhãn nhỏ</span><input value={draft.eyebrow || ""} onChange={(event) => setDraft((old) => ({ ...old, eyebrow: event.target.value }))} placeholder="COLLECTION / Cherylish"/></label><label className="bf-field"><span>Tiêu đề</span><input value={draft.title || ""} onChange={(event) => setDraft((old) => ({ ...old, title: event.target.value }))} placeholder="Tất cả sản phẩm"/></label></div><label className="bf-field"><span>Mô tả</span><textarea rows={3} value={draft.description || ""} onChange={(event) => setDraft((old) => ({ ...old, description: event.target.value }))} placeholder="Trang sức bạc tinh tế kết hợp đá quý thiên nhiên…"/></label><label className="bf-field"><span>Nhãn liên kết</span><input value={draft.ctaLabel || ""} onChange={(event) => setDraft((old) => ({ ...old, ctaLabel: event.target.value }))} placeholder="Khám phá trang sức"/></label></div>}
         <div className="bf-two-fields"><label className="bf-field"><span>Mùa áp dụng</span><select value={draft.season} onChange={(event) => setDraft((old) => ({ ...old, season: event.target.value }))}><option value="">Không theo mùa</option>{[...new Set([...seasons, draft.season].filter(Boolean))].map((season) => <option key={season} value={season}>{season}</option>)}</select></label><label className="bf-field"><span>Liên kết khi bấm</span><input value={draft.href} onChange={(event) => setDraft((old) => ({ ...old, href: event.target.value }))} placeholder="/san-pham"/></label></div>
         <div className="bf-two-fields"><label className="bf-field"><span>Bắt đầu</span><input type="date" value={draft.startAt} onChange={(event) => setDraft((old) => ({ ...old, startAt: event.target.value }))}/></label><label className="bf-field"><span>Kết thúc</span><input type="date" value={draft.endAt} onChange={(event) => setDraft((old) => ({ ...old, endAt: event.target.value }))}/></label></div>
         <label className="bf-field"><span>Trạng thái</span><select value={draft.status} onChange={(event) => setDraft((old) => ({ ...old, status: event.target.value as Banner["status"] }))}><option value="ACTIVE">Đang hiển thị</option><option value="SCHEDULED">Đang lên lịch</option><option value="HIDDEN">Đang ẩn</option></select></label>
@@ -573,7 +658,7 @@ export default function BannerFooterWorkspace({ onNotify }: { onNotify: (message
           <label className="bf-field"><span>Bản quyền</span><input value={footer.copyright} onChange={(event) => setFooter((old) => ({ ...old, copyright: event.target.value }))}/></label>
         </section>
         <section className="bf-footer-card"><div className="bf-footer-card-heading"><div><h2>Menu footer</h2><p>Liên kết hiển thị ở cuối trang.</p></div></div>
-          {([["Về GEME", "aboutLinks"], ["Hỗ trợ khách hàng", "supportLinks"]] as const).map(([title, key]) => <div className="bf-link-group" key={key}><h3>{title}</h3>{footer[key].map((link, index) => <div className="bf-link-row" key={`${key}-${index}`}><input aria-label={`Tên liên kết ${title}`} value={link.label} onChange={(event) => updateLinks(key, index, "label", event.target.value)} placeholder="Tên liên kết"/><input aria-label={`Đường dẫn ${title}`} value={link.href} onChange={(event) => updateLinks(key, index, "href", event.target.value)} placeholder="/duong-dan"/><button onClick={() => removeFooterLink(key, index)} aria-label="Bỏ liên kết">×</button></div>)}<button className="bf-add-link" onClick={() => addFooterLink(key)}>＋ Thêm mục</button></div>)}
+          {([["Về Cherylish", "aboutLinks"], ["Hỗ trợ khách hàng", "supportLinks"]] as const).map(([title, key]) => <div className="bf-link-group" key={key}><h3>{title}</h3>{footer[key].map((link, index) => <div className="bf-link-row" key={`${key}-${index}`}><input aria-label={`Tên liên kết ${title}`} value={link.label} onChange={(event) => updateLinks(key, index, "label", event.target.value)} placeholder="Tên liên kết"/><input aria-label={`Đường dẫn ${title}`} value={link.href} onChange={(event) => updateLinks(key, index, "href", event.target.value)} placeholder="/duong-dan"/><button onClick={() => removeFooterLink(key, index)} aria-label="Bỏ liên kết">×</button></div>)}<button className="bf-add-link" onClick={() => addFooterLink(key)}>＋ Thêm mục</button></div>)}
         </section>
         <section className="bf-footer-card"><div className="bf-footer-card-heading"><div><h2>Mạng xã hội &amp; thanh toán</h2><p>Đường dẫn và nhãn phương thức thanh toán.</p></div></div>
           <div className="bf-link-group">{footer.socialLinks.map((link, index) => <div className="bf-link-row" key={`social-${index}`}><input aria-label="Tên mạng xã hội" value={link.label} onChange={(event) => updateLinks("socialLinks", index, "label", event.target.value)} placeholder="Facebook"/><input aria-label="Liên kết mạng xã hội" value={link.href} onChange={(event) => updateLinks("socialLinks", index, "href", event.target.value)} placeholder="https://"/><button onClick={() => removeFooterLink("socialLinks", index)} aria-label="Bỏ mạng xã hội">×</button></div>)}<button className="bf-add-link" onClick={() => addFooterLink("socialLinks")}>＋ Thêm mạng xã hội</button></div>
@@ -583,8 +668,8 @@ export default function BannerFooterWorkspace({ onNotify }: { onNotify: (message
       </div>
       <div className="bf-footer-save"><span>Nội dung footer được lưu trong cấu hình website; ảnh được lưu riêng trong thư viện media.</span><button className="button button-primary" onClick={() => void saveFooter()} disabled={saving || uploading}>{saving ? "Đang lưu…" : "Lưu footer"}</button></div>
     </div> : tab === "catalog" ? <div className="bf-catalog-editor">
-      <div className="bf-catalog-intro"><div><h2>Ảnh &amp; video Trang sức và New Arrivals</h2><p>Chỉnh các nội dung THE GREEN EDIT, GEME TRÊN BẠN, TỪ ĐÁ ĐẾN TRANG SỨC và ảnh/video riêng trên trang New Arrivals.</p></div><span>Nội dung lưu cùng cấu hình website; media lưu trong thư viện media.</span></div>
-      <p className="bf-catalog-video-note">Chọn trực tiếp video MP4/WebM tối đa 8 MB hoặc dán URL video công khai. Ảnh và poster được tải vào thư viện GEME.</p>
+      <div className="bf-catalog-intro"><div><h2>Ảnh &amp; video Trang sức và New Arrivals</h2><p>Chỉnh các nội dung THE GREEN EDIT, Cherylish TRÊN BẠN, TỪ ĐÁ ĐẾN TRANG SỨC và ảnh/video riêng trên trang New Arrivals.</p></div><span>Nội dung lưu cùng cấu hình website; media lưu trong thư viện media.</span></div>
+      <p className="bf-catalog-video-note">Chọn trực tiếp video MP4/WebM tối đa 8 MB hoặc dán URL video công khai. Ảnh và poster được tải vào thư viện Cherylish.</p>
       <div className="bf-catalog-promo-grid">{catalogPromos.map((promo) => <section className="bf-catalog-promo-card" key={promo.id}>
         <header><div><h3>{promo.title || promo.id}</h3><small>Chèn sau {promo.placement.replace("after-", "")} sản phẩm</small></div><label className="bf-catalog-enable"><input type="checkbox" checked={promo.enabled} onChange={(event) => updateCatalogPromo(promo.id, "enabled", event.target.checked)}/> Bật</label></header>
         <div className="bf-two-fields"><label className="bf-field"><span>Loại nội dung</span><select value={promo.kind} onChange={(event) => updateCatalogPromo(promo.id, "kind", event.target.value as CatalogEditorialPromo["kind"])}><option value="image">Ảnh</option><option value="video">Video</option></select></label><label className="bf-field"><span>Vị trí chèn</span><select value={promo.placement} onChange={(event) => updateCatalogPromo(promo.id, "placement", event.target.value as CatalogEditorialPromo["placement"])}><option value="after-4">Sau 4 sản phẩm</option><option value="after-12">Sau 12 sản phẩm</option><option value="after-18">Sau 18 sản phẩm</option></select></label></div>
@@ -601,7 +686,7 @@ export default function BannerFooterWorkspace({ onNotify }: { onNotify: (message
         <header><div><h2>Trang New Arrivals</h2><p>Thay ảnh biên tập và video cận cảnh chế tác trên trang New Arrivals.</p></div></header>
         <div className="bf-new-arrivals-media-grid">
           <article className="bf-catalog-promo-card">
-            <h3>Ảnh nội dung “Vừa đến GEME”</h3>
+            <h3>Ảnh nội dung “Vừa đến Cherylish”</h3>
             <label className="bf-field"><span>URL ảnh (tuỳ chọn)</span><input value={newArrivalsMedia.editorialImageUrl} onChange={(event) => setNewArrivalsMedia((old) => ({ ...old, editorialImageUrl: event.target.value }))} placeholder="Dán URL hoặc chọn ảnh bên dưới"/></label>
             <label className="bf-catalog-upload"><span>{newArrivalsMedia.editorialImageUrl ? <img src={apiImageUrl(newArrivalsMedia.editorialImageUrl)} alt="Xem trước ảnh New Arrivals"/> : "Chọn ảnh New Arrivals"}</span><input type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => void uploadNewArrivalsImage(event)} disabled={uploading}/></label>
             <label className="bf-field"><span>Văn bản thay thế ảnh</span><input value={newArrivalsMedia.editorialAltText} onChange={(event) => setNewArrivalsMedia((old) => ({ ...old, editorialAltText: event.target.value }))} placeholder="Mô tả ngắn hình ảnh"/></label>
@@ -620,6 +705,17 @@ export default function BannerFooterWorkspace({ onNotify }: { onNotify: (message
         </div>
         <div className="bf-footer-save"><span>Lưu riêng ảnh biên tập và video của New Arrivals.</span><button className="button button-primary" onClick={() => void saveNewArrivalsMedia()} disabled={saving || uploading}>{saving ? "Đang lưu…" : "Lưu ảnh & video New Arrivals"}</button></div>
       </section>
+    </div> : tab === "menu" ? <div className="bf-catalog-editor bf-menu-editor">
+      <div className="bf-catalog-intro"><div><h2>Ảnh quảng bá trong menu Shop</h2><p>Tùy chỉnh khung hình bên phải menu chính. Có thể dùng ảnh đã nén hoặc video ngắn.</p></div><label className="bf-catalog-enable"><input type="checkbox" checked={shopMenuEditorialMedia.enabled} onChange={(event) => setShopMenuEditorialMedia((old) => ({ ...old, enabled: event.target.checked }))}/> Hiển thị</label></div>
+      <p className="bf-catalog-video-note">Video MP4/WebM tối đa 8 MB. Video chỉ tải khi người dùng mở menu; poster vẫn hiển thị trước đó.</p>
+      <div className="bf-menu-media-layout"><article className="bf-catalog-promo-card">
+        <label className="bf-field"><span>Loại nội dung</span><select value={shopMenuEditorialMedia.kind} onChange={(event) => setShopMenuEditorialMedia((old) => ({ ...old, kind: event.target.value === "video" ? "video" : "image" }))}><option value="image">Ảnh</option><option value="video">Video</option></select></label>
+        {shopMenuEditorialMedia.kind === "image" ? <><label className="bf-field"><span>URL ảnh (tuỳ chọn)</span><input value={shopMenuEditorialMedia.imageUrl} onChange={(event) => setShopMenuEditorialMedia((old) => ({ ...old, imageUrl: event.target.value }))} placeholder="Dán URL ảnh hoặc tải ảnh bên dưới"/></label><label className="bf-catalog-upload"><span>{shopMenuEditorialMedia.imageUrl ? <img src={apiImageUrl(shopMenuEditorialMedia.imageUrl)} alt="Xem trước ảnh menu Shop"/> : "Chưa chọn ảnh"}</span><input type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => void uploadShopMenuImage(event)} disabled={uploading}/></label></> : <><label className="bf-field"><span>URL video (MP4/WebM, tuỳ chọn)</span><input value={shopMenuEditorialMedia.videoUrl} onChange={(event) => setShopMenuEditorialMedia((old) => ({ ...old, videoUrl: event.target.value }))} placeholder="Dán URL video hoặc tải video bên dưới"/></label><label className="bf-catalog-upload bf-video-upload"><span>{shopMenuEditorialMedia.videoUrl ? "Video đã chọn · bấm để thay video" : "Chọn video MP4/WebM · tối đa 8 MB"}</span><input type="file" accept="video/mp4,video/webm,.mp4,.webm" onChange={(event) => void uploadShopMenuVideo(event)} disabled={uploading}/></label>{shopMenuEditorialMedia.videoUrl && <video className="bf-catalog-video-preview" src={apiImageUrl(shopMenuEditorialMedia.videoUrl)} poster={shopMenuEditorialMedia.posterUrl ? apiImageUrl(shopMenuEditorialMedia.posterUrl) : undefined} controls playsInline preload="metadata" aria-label="Xem trước video menu Shop"/>}<label className="bf-field"><span>URL poster (tuỳ chọn)</span><input value={shopMenuEditorialMedia.posterUrl} onChange={(event) => setShopMenuEditorialMedia((old) => ({ ...old, posterUrl: event.target.value }))} placeholder="Dán URL ảnh poster"/></label><label className="bf-catalog-upload"><span>{shopMenuEditorialMedia.posterUrl ? <img src={apiImageUrl(shopMenuEditorialMedia.posterUrl)} alt="Xem trước poster menu Shop"/> : "Chọn ảnh poster"}</span><input type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => void uploadShopMenuPoster(event)} disabled={uploading}/></label></>}
+        <label className="bf-field"><span>Dòng chữ phía trên</span><input value={shopMenuEditorialMedia.topLine} onChange={(event) => setShopMenuEditorialMedia((old) => ({ ...old, topLine: event.target.value }))} placeholder="TIMELESS"/></label>
+        <label className="bf-field"><span>Dòng chữ phía dưới</span><input value={shopMenuEditorialMedia.bottomLine} onChange={(event) => setShopMenuEditorialMedia((old) => ({ ...old, bottomLine: event.target.value }))} placeholder="ELEGANCE"/></label>
+        <label className="bf-field"><span>Mô tả ảnh/video</span><input value={shopMenuEditorialMedia.altText} onChange={(event) => setShopMenuEditorialMedia((old) => ({ ...old, altText: event.target.value }))} placeholder="Mô tả ngắn media"/></label>
+      </article><aside className="bf-menu-media-preview" aria-label="Xem trước khung media menu">{shopMenuEditorialMedia.kind === "video" && shopMenuEditorialMedia.videoUrl ? <video src={apiImageUrl(shopMenuEditorialMedia.videoUrl)} poster={shopMenuEditorialMedia.posterUrl ? apiImageUrl(shopMenuEditorialMedia.posterUrl) : undefined} muted loop playsInline controls preload="metadata"/> : <img src={apiImageUrl(shopMenuEditorialMedia.kind === "video" ? shopMenuEditorialMedia.posterUrl || shopMenuEditorialMedia.imageUrl : shopMenuEditorialMedia.imageUrl)} alt={shopMenuEditorialMedia.altText}/>}<div><span>{shopMenuEditorialMedia.topLine || "TIMELESS"}</span><span>{shopMenuEditorialMedia.bottomLine || "ELEGANCE"}</span></div></aside></div>
+      <div className="bf-footer-save"><span>Lưu ảnh/video, poster và dòng chữ cho menu Shop.</span><button className="button button-primary" onClick={() => void saveShopMenuEditorialMedia()} disabled={saving || uploading}>{saving ? "Đang lưu…" : "Lưu nội dung menu"}</button></div>
     </div> : <div className="bf-library-panel">
       <div className="bf-library-heading"><div><h2>Thư viện ảnh Banner &amp; Footer</h2><p>Ảnh được lưu trong media storage, phân nhóm theo mục đang sử dụng.</p></div><div className="bf-library-filters"><button className={libraryKind === "banner" ? "active" : ""} onClick={() => setLibraryKind("banner")}>Tất cả ảnh banner <span>{bannerImages.length}</span></button><button className={libraryKind === "footer" ? "active" : ""} onClick={() => setLibraryKind("footer")}>Tất cả ảnh footer <span>{footerImages.length}</span></button>{libraryKind === "banner" && <select aria-label="Lọc ảnh theo mùa" value={filterSeason} onChange={(event) => setFilterSeason(event.target.value)}><option>Tất cả mùa</option>{seasons.map((season) => <option key={season}>{season}</option>)}</select>}</div></div>
       {filteredGallery.length ? <div className="bf-gallery-grid">{filteredGallery.map((item, index) => <article className="bf-gallery-card" key={`${item.url}-${index}`}><button type="button" className="bf-gallery-open" aria-label={`Phóng to ảnh ${item.name}`} onClick={() => setZoomImage({ url: apiImageUrl(item.url), name: item.name })}><span className="bf-gallery-photo"><img src={apiImageUrl(item.url)} alt={item.name}/><span>⌕</span></span></button><strong>{item.name}</strong><small>{item.detail}</small>{libraryKind === "banner" && <em>{item.season || "Không theo mùa"}</em>}<button type="button" className="bf-download-button" onClick={() => void downloadImage(item.url, item.name).catch((error) => onNotify(error instanceof Error ? error.message : "Không tải được ảnh."))}>↓ Tải ảnh</button></article>)}</div> : <p className="bf-empty">{libraryKind === "footer" ? "Chưa có ảnh footer được chọn." : "Không có ảnh banner thuộc mùa này."}</p>}

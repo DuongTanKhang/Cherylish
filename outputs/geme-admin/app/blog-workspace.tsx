@@ -69,7 +69,7 @@ export default function BlogWorkspace({ posts, categories, onCreate, onEdit, onD
 
   return <div className="blog-workspace blog-list-workspace">
     <main className="blog-main">
-      <div className="blog-heading"><div><h1>Bài viết / Blog</h1><p>Quản lý bài viết và chủ đề nội dung của GEME.</p></div><button className="button button-primary" onClick={onCreate}><span>＋</span>Tạo bài viết mới</button></div>
+      <div className="blog-heading"><div><h1>Bài viết / Blog</h1><p>Quản lý bài viết và chủ đề nội dung của Cherylish.</p></div><button className="button button-primary" onClick={onCreate}><span>＋</span>Tạo bài viết mới</button></div>
       <section className="blog-stats" aria-label="Thống kê bài viết">
         <article className="blog-stat"><span className="blog-stat-icon mint">▱</span><div><small>Tổng bài viết</small><strong>{allPosts.length}</strong></div></article>
         <article className="blog-stat"><span className="blog-stat-icon green">▣</span><div><small>Bài viết đã xuất bản</small><strong>{publishedCount}</strong></div></article>
@@ -88,7 +88,7 @@ export default function BlogWorkspace({ posts, categories, onCreate, onEdit, onD
             <td><span className={`blog-category ${post.category === "Đá quý" ? "gem" : post.category === "Trang sức" ? "jewelry" : post.category === "Tư vấn" ? "advice" : post.category === "Phong thủy" ? "fengshui" : "trend"}`}>{post.category || "Chưa phân loại"}</span></td>
             <td>{post.author}</td><td className="blog-date-cell">{post.date || "—"}</td><td><span className={`blog-status ${statusClass(post.status)}`}><i/>{post.status}</span></td><td>{formatCount(post.views)}</td>
             <td><div className="blog-row-actions">{post.status === "Đã xuất bản" && post.slug && <a aria-label={`Xem ${post.name}`} href={`http://localhost:3000/blog/${encodeURIComponent(post.slug)}`} target="_blank" rel="noreferrer">◉</a>}<button aria-label={`Sửa ${post.name}`} onClick={() => onEdit(post)}>✎</button><button disabled={deleting === post.id} aria-label={`Xóa ${post.name}`} onClick={() => void deletePost(post)}>{deleting === post.id ? "…" : "×"}</button></div></td>
-          </tr>) : <tr><td colSpan={7} className="blog-empty">{allPosts.length ? "Không tìm thấy bài viết phù hợp." : "Chưa có bài viết. Hãy tạo bài đầu tiên cho GEME."}</td></tr>}
+          </tr>) : <tr><td colSpan={7} className="blog-empty">{allPosts.length ? "Không tìm thấy bài viết phù hợp." : "Chưa có bài viết. Hãy tạo bài đầu tiên cho Cherylish."}</td></tr>}
         </tbody></table></div>
         <div className="blog-pagination"><span>Hiển thị {filtered.length ? (page - 1) * pageSize + 1 : 0} - {Math.min(page * pageSize, filtered.length)} / {filtered.length} bài viết</span><div><button disabled={page === 1} aria-label="Trang trước" onClick={() => setPage((value) => Math.max(1, value - 1))}>‹</button>{Array.from({ length: pageCount }, (_, index) => index + 1).map((number) => <button key={number} className={page === number ? "current" : ""} onClick={() => setPage(number)}>{number}</button>)}<button disabled={page >= pageCount} aria-label="Trang sau" onClick={() => setPage((value) => Math.min(pageCount, value + 1))}>›</button></div></div>
       </section>

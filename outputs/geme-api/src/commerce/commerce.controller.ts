@@ -4,15 +4,18 @@ import { AdminAuthService } from "../admin-auth/admin-auth.service.js";
 import { CommerceService } from "./commerce.service.js";
 import { onlineOrderInput } from "./online-order-input.js";
 import { MediaAssetsService } from "../media/media-assets.service.js";
+import { LoyaltyService } from "../loyalty/loyalty.service.js";
+import type { AdminIdentity } from "../admin-auth/admin-auth.service.js";
 
 type MediaResponse = { setHeader(name: string, value: string): void; end(data?: Uint8Array): void; redirect(status: number, url: string): unknown };
 type AuthorizationRequest = { headers: { authorization?: string } };
+type AdminRequest = { adminIdentity: AdminIdentity };
 
 const admin = () => UseGuards(AdminAuthGuard);
 
 @Controller()
 export class CommerceController {
-  constructor(private readonly commerce: CommerceService, private readonly adminAuth: AdminAuthService, private readonly mediaStore: MediaAssetsService) {}
+  constructor(private readonly commerce: CommerceService, private readonly adminAuth: AdminAuthService, private readonly mediaStore: MediaAssetsService, private readonly loyalty: LoyaltyService) {}
 
   @Get("categories/public")
   @Header("Cache-Control", "no-store")
@@ -36,10 +39,10 @@ export class CommerceController {
   }
 
   @Get("admin/products") @admin() adminProducts(@Query() query: Record<string, string>) { return this.commerce.products(query); }
+  @Sse("products/events") productEvents() { return this.commerce.catalogEvents(); }
   @Get("products/:id") @admin() adminProduct(@Param("id") id: string) { return this.commerce.adminProduct(id); }
   @Get("products/detail/:slug/related") relatedProducts(@Param("slug") slug: string, @Query("limit") limit?: string) { return this.commerce.relatedProducts(slug, limit); }
   @Get("products/detail/:slug") product(@Param("slug") slug: string) { return this.commerce.product(slug); }
-  @Sse("products/events") productEvents() { return this.commerce.catalogEvents(); }
   @Post("products") @admin() createProduct(@Body() body: Record<string, any>) { return this.commerce.saveProduct(body); }
   @Patch("products/by-sku/:sku") @admin() updateProductBySku(@Param("sku") sku: string, @Body() body: Record<string, any>) { return this.commerce.saveProductBySku(body, sku); }
   @Patch("products/:id") @admin() updateProduct(@Param("id") id: string, @Body() body: Record<string, any>) { return this.commerce.saveProduct(body, id); }
@@ -61,6 +64,13 @@ export class CommerceController {
   @Post("inventory/reset") @admin() resetInventory(@Body() body: Record<string, any>) { return this.commerce.resetInventory(body); }
   @Patch("inventory/products/:id/minimum-stock") @admin() minimumStock(@Param("id") id: string, @Body() body: Record<string, any>) { return this.commerce.updateMinimumStock(id, body.minimumStock); }
   @Post("inventory/movements") @admin() createInventoryMovement(@Body() body: Record<string, any>) { return this.commerce.createInventoryMovement(body); }
+  @Get("integrations/loyverse/status") @admin() loyverseStatus() { return this.commerce.loyverseStatus(); }
+  @Post("integrations/loyverse/test-connection") @admin() testLoyverseConnection() { return this.commerce.testLoyverseConnection(); }
+  @Post("integrations/loyverse/sync") @admin() queueLoyverseResync() { return this.commerce.queueLoyverseResync(); }
+
+  @Get("loyalty") @admin() loyaltyOverview(@Query("limit") limit?: string) { return this.loyalty.adminOverview(limit); }
+  @Patch("loyalty/settings") @admin() saveLoyaltySettings(@Req() request: AdminRequest, @Body() body: Record<string, unknown>) { return this.loyalty.saveSettings(body, request.adminIdentity); }
+  @Post("loyalty/customers/:customerId/adjustment") @admin() adjustLoyaltyPoints(@Req() request: AdminRequest, @Param("customerId") customerId: string, @Body() body: Record<string, unknown>) { return this.loyalty.adjustCustomer(customerId, body.points, body.note, request.adminIdentity); }
 
   @Get("customers") @admin() customers(@Query() query: Record<string, string>) { return this.commerce.customers(query); }
   @Post("customers") @admin() createCustomer(@Body() body: Record<string, any>) { return this.commerce.saveCustomer(body); }
@@ -151,4 +161,5 @@ export class CommerceController {
   @Patch("settings") @admin() saveSettings(@Body() body: Record<string, unknown>) { return this.commerce.saveSettings(body); }
   @Get("reports/storefront") storefrontReport() { return this.commerce.storefrontSalesOverview(); }
   @Get("reports/overview") @admin() report(@Query() query: Record<string, string>) { return this.commerce.report(query); }
+  @Get("reports/gross-profit") @admin() grossProfitReport(@Query() query: Record<string, string>) { return this.commerce.grossProfitReport(query); }
 }

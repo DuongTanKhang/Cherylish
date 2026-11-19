@@ -30,6 +30,7 @@ services:
       LOYVERSE_ENABLED: ${LOYVERSE_ENABLED:-false}
       LOYVERSE_ACCESS_TOKEN: ${LOYVERSE_ACCESS_TOKEN:-}
       LOYVERSE_STORE_ID: ${LOYVERSE_STORE_ID:-}
+      REDIS_URL: redis://redis:6379/2
       VIETTELPOST_ENABLED: ${VIETTELPOST_ENABLED:-false}
       VIETTELPOST_API_BASE_URL: ${VIETTELPOST_API_BASE_URL:-https://partnerdev.viettelpost.vn}
       VIETTELPOST_TOKEN: ${VIETTELPOST_TOKEN:-}
@@ -45,6 +46,8 @@ services:
         condition: service_started
       mailpit:
         condition: service_started
+      redis:
+        condition: service_healthy
     networks:
       - default
     restart: unless-stopped

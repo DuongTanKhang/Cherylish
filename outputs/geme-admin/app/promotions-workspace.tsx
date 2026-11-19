@@ -71,7 +71,7 @@ function PromotionEditor({ initial, onClose, onSave }: { initial?: Promotion; on
   const submit = async (event: FormEvent<HTMLFormElement>) => { event.preventDefault(); setSaving(true); setError(""); try { await onSave({ ...draft, code: draft.code.trim().toUpperCase(), name: draft.name.trim(), description: draft.description.trim(), conditions: draft.conditions.filter(Boolean) }); onClose(); } catch (cause) { setError(cause instanceof Error ? cause.message : "Không thể lưu khuyến mãi."); } finally { setSaving(false); } };
   return <div className="promotion-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
     <section className="promotion-modal" role="dialog" aria-modal="true" aria-labelledby="promotion-editor-title">
-      <header><div><span className="eyebrow">GEME ADMIN</span><h2 id="promotion-editor-title">{initial ? "Chỉnh sửa khuyến mãi" : "Tạo khuyến mãi mới"}</h2><p>Tạo chương trình ưu đãi để khách hàng dễ dàng khám phá.</p></div><button className="promotion-icon-button" onClick={onClose} aria-label="Đóng">×</button></header>
+      <header><div><span className="eyebrow">Cherylish ADMIN</span><h2 id="promotion-editor-title">{initial ? "Chỉnh sửa khuyến mãi" : "Tạo khuyến mãi mới"}</h2><p>Tạo chương trình ưu đãi để khách hàng dễ dàng khám phá.</p></div><button className="promotion-icon-button" onClick={onClose} aria-label="Đóng">×</button></header>
       <form onSubmit={submit}>
         <div className="promotion-form-grid">
           <label className="promotion-field wide"><span>Tên chương trình <b>*</b></span><input required value={draft.name} onChange={(event) => update("name", event.target.value)} placeholder="Ví dụ: Sale mùa thu"/></label>
