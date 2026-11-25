@@ -97,7 +97,7 @@ export class LoyverseService {
           result.details.push({ orderCode, status: "skipped", message: "Loyverse API chỉ nhận một phương thức thanh toán cho mỗi đơn." });
           continue;
         }
-        const method = methods[0];
+        const method = String(methods[0] || "OTHER");
         const availableTypes = paymentTypes.filter((type) => !type.deleted_at && (!type.stores?.length || type.stores.includes(storeId)));
         const methodNeedle: Record<string, string[]> = {
           COD: ["cash", "tiền mặt"],
