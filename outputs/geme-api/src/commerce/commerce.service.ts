@@ -751,7 +751,6 @@ export class CommerceService implements OnModuleInit, OnModuleDestroy {
     }
     if (!data.parentId) {
       if (data.level !== 1) throw new BadRequestException("Danh mục cấp 2 hoặc cấp 3 phải có danh mục cha.");
-      if (!currentId && data.kind === "JEWELRY" && data.slug !== "trang-suc") throw new BadRequestException("Nhóm cấp 1 của trang sức đã cố định là Trang sức.");
       return;
     }
     const parent = await this.prisma.category.findUnique({ where: { id: data.parentId }, select: { id: true, slug: true, kind: true, usage: true, level: true, status: true } });

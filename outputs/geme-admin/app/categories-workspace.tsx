@@ -226,15 +226,7 @@ export default function CategoriesWorkspace({ categories, onSave, onDelete, onNo
       onNotify("Danh mục đã ở cấp sâu nhất cho nhóm này.");
       return;
     }
-    const requestsJewelry = !parent && (kindFilter === "Tất cả" || kindFilter === "Trang sức");
-    const defaultJewelryRoot = requestsJewelry
-      ? categories.find((item) => item.kind === "Trang sức" && categoryLevel(item) === 1 && item.slug === "trang-suc" && item.status === "Hoạt động")
-      : undefined;
-    if (requestsJewelry && !defaultJewelryRoot) {
-      onNotify("Hãy hiện danh mục gốc Trang sức trước khi thêm danh mục con.");
-      return;
-    }
-    const effectiveParent = parent ?? defaultJewelryRoot;
+    const effectiveParent = parent;
     const level = effectiveParent ? categoryLevel(effectiveParent) + 1 : 1;
     const next: AdminCategory = {
       id: `DM${String(Date.now()).slice(-6)}`,
@@ -274,7 +266,8 @@ export default function CategoriesWorkspace({ categories, onSave, onDelete, onNo
       return;
     }
     if (level === 1) {
-      setDraft({ ...category, level, parentId: undefined, usage: undefined, pricingMode: "FIXED", sortOrder: "1" });
+      const nextRootOrder = Math.max(0, ...categories.filter((item) => !item.parentId && item.id !== category.id).map((item) => Number(item.sortOrder) || 0)) + 1;
+      setDraft({ ...category, level, parentId: undefined, usage: undefined, pricingMode: "FIXED", sortOrder: String(nextRootOrder) });
       return;
     }
     const allowedParentLevel = level - 1;
@@ -292,12 +285,9 @@ export default function CategoriesWorkspace({ categories, onSave, onDelete, onNo
     if (!category) return;
     const level = categoryLevel(category);
     const safeLevel = kind === "Vật phẩm" ? Math.min(level, 4) : Math.min(level, 3);
-    const jewelryRoot = kind === "Trang sức" && safeLevel === 1
-      ? categories.find((item) => item.kind === kind && categoryLevel(item) === 1 && item.slug === "trang-suc" && item.status === "Hoạt động")
-      : undefined;
     const parent = safeLevel === 1 ? undefined : categories.find((item) => categoryLevel(item) === safeLevel - 1 && item.kind === kind && item.status === "Hoạt động" && (safeLevel !== 3 || (kind === "Đá quý" ? true : item.usage !== "stone")));
-    const nextLevel = jewelryRoot ? 2 : safeLevel;
-    const nextParent = jewelryRoot ?? parent;
+    const nextLevel = safeLevel;
+    const nextParent = parent;
     setDraft({ ...category, kind, level: nextLevel, usage: nextLevel === 1 ? undefined : "product", parentId: nextParent?.id, pricingMode: nextLevel === 1 ? "FIXED" : kind === "Đá quý" ? "GEMSTONE_SIZE" : nextParent?.slug === "vong-tay" ? "QUALITY_AND_BEAD_SIZE" : "FIXED", sortOrder: nextParent ? `${nextParent.sortOrder}.1` : "1" });
   };
 
@@ -318,7 +308,7 @@ export default function CategoriesWorkspace({ categories, onSave, onDelete, onNo
       setCreating(false);
       setSlugEdited(true);
       onNotify(creating ? `Đã thêm danh mục “${saved.name}”.` : `Đã lưu danh mục “${saved.name}”.`);
-      if (creating && savedRecord.kind !== "Vật phẩm" && savedRecord.usage !== "stone" && !isGemstoneCut(savedRecord, updated)) onCreateProduct(savedRecord);
+      if (creating && categoryLevel(savedRecord) >= 2 && savedRecord.kind !== "Vật phẩm" && savedRecord.usage !== "stone" && !isGemstoneCut(savedRecord, updated)) onCreateProduct(savedRecord);
     } catch (error) {
       onNotify(error instanceof Error ? error.message : "Không thể lưu danh mục vào database.");
     } finally {
@@ -441,7 +431,7 @@ export default function CategoriesWorkspace({ categories, onSave, onDelete, onNo
         {categoryIsFixed && activeTab === "basic" ? <div className="category-editor-fields category-fixed-editor"><strong>Danh mục bắt buộc</strong><p>{category.name} là danh mục cố định của Cherylish. Không thể sửa tên, cấu trúc hoặc xóa; chỉ có thể ẩn/hiện.</p><CategoryStatus status={category.status}/><button className={`button ${category.status === "Hoạt động" ? "button-quiet" : "button-primary"}`} disabled={saving} onClick={() => void toggleVisibility()}><Icon name="eye"/>{category.status === "Hoạt động" ? "Ẩn danh mục" : "Hiện danh mục"}</button></div> : activeTab === "basic" && <div className="category-editor-fields">
           <label className="category-field"><span>{category.kind === "Đá quý" && categoryLevel(category) === 3 ? "Tên dạng cắt" : "Tên danh mục"} <b>*</b></span><input value={category.name} onChange={(event) => updateName(event.target.value)} placeholder={category.kind === "Đá quý" && categoryLevel(category) === 3 ? "Ví dụ: Oval, Pear, Cabochon" : "Nhập tên danh mục"}/></label>
           <label className="category-field"><span>Slug <b>*</b></span><input value={category.slug} onChange={(event) => { setSlugEdited(true); update("slug", slugify(event.target.value)); }} placeholder="ten-danh-muc"/><small>Slug sẽ được tạo tự động nếu để trống</small></label>
-          {creating && <label className="category-field"><span>Cấp danh mục</span><select value={categoryLevel(category)} onChange={(event) => changeLevel(Number(event.target.value))}>{category.kind === "Trang sức" ? <><option value={2}>Cấp 2 · Danh mục</option><option value={3}>Cấp 3 · Phân loại con</option></> : category.kind === "Đá quý" ? <><option value={1}>Cấp 1 · Nhóm chính</option><option value={2}>Cấp 2 · Loại đá / danh mục</option></> : <><option value={1}>Cấp 1 · Nhóm chính</option><option value={2}>Cấp 2 · Danh mục</option><option value={3}>Cấp 3 · Nhóm con</option><option value={4}>Cấp 4 · Phân nhóm chi tiết</option></>}</select><small>{category.kind === "Đá quý" && categoryLevel(category) === 3 ? "Dạng cắt cấp 3 được quản lý trong Sản phẩm → Loại đá → Mặt đá quý." : "Chọn danh mục cha bên dưới để đặt đúng vị trí trong cây danh mục."}</small></label>}
+          {creating && <label className="category-field"><span>Cấp danh mục</span><select value={categoryLevel(category)} onChange={(event) => changeLevel(Number(event.target.value))}>{category.kind === "Trang sức" ? <><option value={1}>Cấp 1 · Nhóm chính</option><option value={2}>Cấp 2 · Danh mục</option><option value={3}>Cấp 3 · Phân loại con</option></> : category.kind === "Đá quý" ? <><option value={1}>Cấp 1 · Nhóm chính</option><option value={2}>Cấp 2 · Loại đá / danh mục</option></> : <><option value={1}>Cấp 1 · Nhóm chính</option><option value={2}>Cấp 2 · Danh mục</option><option value={3}>Cấp 3 · Nhóm con</option><option value={4}>Cấp 4 · Phân nhóm chi tiết</option></>}</select><small>{category.kind === "Đá quý" && categoryLevel(category) === 3 ? "Dạng cắt cấp 3 được quản lý trong Sản phẩm → Loại đá → Mặt đá quý." : "Chọn danh mục cha bên dưới để đặt đúng vị trí trong cây danh mục."}</small></label>}
           {(creating || !category.parentId) && <label className="category-field"><span>Nhóm danh mục</span><select value={category.kind} onChange={(event) => changeKind(event.target.value as CategoryKind)}><option>Trang sức</option><option>Đá quý</option></select><small>Chọn nhóm hàng rồi đặt danh mục vào đúng cấp bên dưới.</small></label>}
           {category.parentId && <label className="category-field"><span>Danh mục cha cấp {categoryLevel(category) - 1}</span><select value={category.parentId} onChange={(event) => { const parent = categories.find((item) => item.id === event.target.value); setDraft((current) => current ? { ...current, parentId: parent?.id, kind: parent?.kind ?? current.kind, usage: categoryLevel(current) === 2 && parent?.kind === "Đá quý" ? current.usage ?? "product" : "product", pricingMode: current.usage === "stone" ? "FIXED" : current.kind === "Đá quý" ? "GEMSTONE_SIZE" : parent?.slug === "vong-tay" ? "QUALITY_AND_BEAD_SIZE" : current.pricingMode ?? "FIXED", sortOrder: parent ? `${parent.sortOrder}.1` : "1" } : current); }}>{categories.filter((item) => item.id !== category.id && categoryLevel(item) === categoryLevel(category) - 1 && item.kind === category.kind && item.status === "Hoạt động" && (categoryLevel(category) !== 3 || (category.kind === "Đá quý" ? true : item.usage !== "stone"))).map((item) => <option key={item.id} value={item.id}>{item.name}{categoryLevel(item) > 1 ? ` · ${categories.find((parent) => parent.id === item.parentId)?.name ?? ""}` : ""}</option>)}</select></label>}
           {category.parentId && category.kind === "Đá quý" && categoryLevel(category) === 2 && <label className="category-field"><span>Dùng danh mục này làm</span><select value={category.usage ?? "product"} onChange={(event) => { const usage = event.target.value as "product" | "stone"; update("usage", usage); update("pricingMode", usage === "stone" ? "FIXED" : "GEMSTONE_SIZE"); }}><option value="product">Danh mục sản phẩm (ví dụ: Mặt đá quý)</option><option value="stone">Loại đá để gắn vào mặt đá (ví dụ: Opal)</option></select><small>Loại đá sẽ xuất hiện trong danh sách chọn; có thể tạo các dạng cắt bên dưới loại đá này.</small></label>}
@@ -450,7 +440,7 @@ export default function CategoriesWorkspace({ categories, onSave, onDelete, onNo
           <label className="category-field"><span>Mô tả ngắn</span><textarea rows={3} maxLength={200} value={category.description ?? ""} onChange={(event) => update("description", event.target.value)} placeholder="Nhập mô tả ngắn về danh mục..."/><small className="category-counter">{(category.description ?? "").length}/200</small></label>
           <div className="category-status-setting"><div><strong>Trạng thái</strong></div><label className="category-switch"><input type="checkbox" checked={category.status === "Hoạt động"} onChange={(event) => update("status", event.target.checked ? "Hoạt động" : "Đã ẩn")}/><span/><small>{category.status}</small></label></div>
           <label className="category-field category-order-setting"><span>Thứ tự hiển thị</span><input type="number" min="1" value={Number(category.sortOrder.split(".").at(-1)) || 1} onChange={(event) => { const order = event.target.value || "1"; update("sortOrder", category.parentId ? `${categories.find((item) => item.id === category.parentId)?.sortOrder ?? "1"}.${order}` : order); }}/><small>Thứ tự ưu tiên hiển thị (số nhỏ hơn sẽ hiển thị trước)</small></label>
-          <div className="category-editor-actions"><button className="button button-quiet" onClick={cancel}>Hủy</button><button className="button button-primary" onClick={save}>{creating && category.parentId && category.kind !== "Vật phẩm" && categoryLevel(category) !== 3 ? "Lưu và tạo sản phẩm" : creating ? "Lưu danh mục" : "Lưu thay đổi"}</button></div>
+          <div className="category-editor-actions"><button className="button button-quiet" onClick={cancel}>Hủy</button><button className="button button-primary" onClick={save}>{creating && categoryLevel(category) >= 2 && category.parentId && category.kind !== "Vật phẩm" && categoryLevel(category) !== 3 ? "Lưu và tạo sản phẩm" : creating ? "Lưu danh mục" : "Lưu thay đổi"}</button></div>
         </div>}
 
         {activeTab === "seo" && <div className="category-editor-fields"><label className="category-field"><span>Tiêu đề SEO</span><input value={category.seoTitle ?? ""} onChange={(event) => update("seoTitle", event.target.value)} placeholder={category.name || "Tên danh mục"}/></label><label className="category-field"><span>Mô tả SEO</span><textarea rows={4} maxLength={160} value={category.seoDescription ?? ""} onChange={(event) => update("seoDescription", event.target.value)} placeholder="Mô tả danh mục cho công cụ tìm kiếm..."/></label><div className="category-seo-preview"><small>geme.vn › danh-muc › {category.slug || "ten-danh-muc"}</small><strong>{category.seoTitle || category.name || "Tên danh mục"} | Cherylish</strong><span>{category.seoDescription || category.description || "Khám phá các sản phẩm trong danh mục Cherylish."}</span></div><div className="category-editor-actions"><button className="button button-quiet" onClick={cancel}>Hủy</button><button className="button button-primary" onClick={save}>Lưu thay đổi</button></div></div>}
