@@ -1141,13 +1141,14 @@ export class CommerceService implements OnModuleInit, OnModuleDestroy {
           stock: true,
           minimumStock: true,
           price: true,
+          purchaseCost: true,
           kind: true,
           updatedAt: true,
           category: { select: { id: true, name: true, pricingMode: true } },
           gemstoneType: { select: { id: true, name: true } },
           materialOption: { select: { id: true, name: true, kind: true, scope: true } },
           images: { orderBy: [{ isPrimary: "desc" }, { sortOrder: "asc" }], take: 1, select: { url: true, alt: true } },
-          variants: { orderBy: { sortOrder: "asc" }, select: { id: true, sku: true, quality: true, beadSize: true, carat: true, gemstoneQuality: true, price: true, originalPrice: true, stock: true, imageUrls: true, videoUrl: true, sortOrder: true } },
+          variants: { orderBy: { sortOrder: "asc" }, select: { id: true, sku: true, quality: true, beadSize: true, carat: true, gemstoneQuality: true, price: true, originalPrice: true, purchaseCost: true, stock: true, imageUrls: true, videoUrl: true, sortOrder: true } },
         },
         orderBy: [{ updatedAt: "desc" }, { name: "asc" }],
         take: 5000,
@@ -2004,6 +2005,20 @@ export class CommerceService implements OnModuleInit, OnModuleDestroy {
             const productSku = variant?.sku || product.sku;
             const stoneName = product.kind === "GEMSTONE" ? product.gemstoneType?.name || product.materialOption?.name || null : product.materialOption?.name || null;
             const lineTotal = row.quantity * row.unitCost;
+            const suggestedSalePrice = Math.round(row.unitCost * 2.5);
+            if (variant) {
+              const currentCost = await tx.productPriceVariant.findUniqueOrThrow({ where: { id: variant.id }, select: { purchaseCost: true } });
+              await tx.productPriceVariant.update({ where: { id: variant.id }, data: {
+                purchaseCost: row.unitCost,
+                ...(currentCost.purchaseCost == null ? { price: suggestedSalePrice } : {}),
+              } });
+            } else {
+              const currentCost = await tx.product.findUniqueOrThrow({ where: { id: product.id }, select: { purchaseCost: true } });
+              await tx.product.update({ where: { id: product.id }, data: {
+                purchaseCost: row.unitCost,
+                ...(currentCost.purchaseCost == null ? { price: suggestedSalePrice } : {}),
+              } });
+            }
             await tx.inventoryReceiptItem.create({ data: {
               receiptId: savedReceipt.id, productId: product.id, variantId: variant?.id || null,
               productName: product.name, productSku, quality: variant?.quality || null, beadSize: variant?.beadSize || null,

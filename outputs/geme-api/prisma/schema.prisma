@@ -510,6 +510,7 @@ model Product {
     isPremiumGemstone      Boolean                @default(false) @map("is_premium_gemstone")
   price                 Decimal?               @db.Decimal(14, 0)
   originalPrice         Decimal?               @map("original_price") @db.Decimal(14, 0)
+  purchaseCost          Decimal?               @map("purchase_cost") @db.Decimal(14, 0)
   stock                 Int                    @default(0)
   stockKg               Decimal                @default(0) @map("stock_kg") @db.Decimal(14, 3)
   minimumStock          Int                    @default(5) @map("minimum_stock")
@@ -614,6 +615,7 @@ model ProductPriceVariant {
   videoUrl              String?                @map("video_url") @db.Text
   price                 Decimal                @db.Decimal(14, 0)
   originalPrice         Decimal?               @map("original_price") @db.Decimal(14, 0)
+  purchaseCost          Decimal?               @map("purchase_cost") @db.Decimal(14, 0)
   stock                 Int                    @default(0)
   stockKg               Decimal                @default(0) @map("stock_kg") @db.Decimal(14, 3)
   sortOrder             Int                    @default(0) @map("sort_order")

@@ -6,8 +6,8 @@ import type { AdminCategory } from "./categories-workspace";
 import type { MaterialOption } from "./materials-workspace";
 import { parsePriceInput } from "./product-images";
 
-type VariantDraft = { price: string; originalPrice: string };
-type ProductDraft = { price: string; originalPrice: string; variants: Record<string, VariantDraft>; sphereItems: Record<string, string> };
+type VariantDraft = { price: string };
+type ProductDraft = { price: string; variants: Record<string, VariantDraft>; sphereItems: Record<string, string> };
 type PriceSyncStatus = { id: string; sku: string; status: string | null; error: string | null; syncedAt: string | null };
 type Props = {
   products: AdminProduct[];
@@ -27,10 +27,9 @@ const variantDescription = (product: AdminProduct, variant: ProductPriceVariant)
 
 function makeDraft(product: AdminProduct): ProductDraft {
   return {
-    price: String(product.price || ""),
-    originalPrice: String(product.originalPrice || ""),
+    price: String(product.price || (product.purchaseCost != null ? Math.round(product.purchaseCost * 2.5) : "")),
     variants: Object.fromEntries((product.priceVariants || []).map((variant, index) => [variantKey(variant, index), {
-      price: String(variant.price || ""), originalPrice: String(variant.originalPrice || ""),
+      price: String(variant.price || (variant.purchaseCost != null ? Math.round(variant.purchaseCost * 2.5) : "")),
     }])),
     sphereItems: Object.fromEntries((product.sphereItems || []).map((item) => [item.id, String(item.price || "")])),
   };
@@ -379,11 +378,11 @@ export default function PriceProfileWorkspace({ products, categories, materials,
     : Number(product.price) > 0).length;
   const variantCount = products.reduce((sum, product) => sum + (product.sphereItems?.length || product.priceVariants?.length || 1), 0);
   const dirty = (product: AdminProduct, draft: ProductDraft) => {
-    if (Number(draft.price) !== Number(product.price || 0) || Number(draft.originalPrice) !== Number(product.originalPrice || 0)) return true;
+    if (Number(draft.price) !== Number(product.price || 0)) return true;
     if ((product.sphereItems || []).some((item) => Number(draft.sphereItems[item.id] || 0) !== Number(item.price || 0))) return true;
     return (product.priceVariants || []).some((variant, index) => {
-      const next = draft.variants[variantKey(variant, index)] || { price: "", originalPrice: "" };
-      return Number(next.price) !== Number(variant.price || 0) || Number(next.originalPrice) !== Number(variant.originalPrice || 0);
+      const next = draft.variants[variantKey(variant, index)] || { price: "" };
+      return Number(next.price) !== Number(variant.price || 0);
     });
   };
 
@@ -405,7 +404,7 @@ export default function PriceProfileWorkspace({ products, categories, materials,
       const variants = { ...current.variants };
       for (const variant of linkedVariants) {
         const key = variantKey(variant, (product.priceVariants || []).indexOf(variant));
-        const value = variants[key] || { price: String(variant.price || ""), originalPrice: String(variant.originalPrice || "") };
+        const value = variants[key] || { price: String(variant.price || "") };
         variants[key] = { ...value, [field]: nextValue };
       }
       return { ...current, variants };
@@ -416,14 +415,13 @@ export default function PriceProfileWorkspace({ products, categories, materials,
     const key = product.id;
     const draft = drafts[key] || makeDraft(product);
     const priceVariants = (product.priceVariants || []).map((variant, index) => {
-      const next = draft.variants[variantKey(variant, index)] || { price: "", originalPrice: "" };
-      return { ...variant, price: parsePriceInput(next.price), originalPrice: parsePriceInput(next.originalPrice) || 0 };
+      const next = draft.variants[variantKey(variant, index)] || { price: "" };
+      return { ...variant, price: parsePriceInput(next.price) };
     });
     const prices = priceVariants.length ? priceVariants.map((variant) => variant.price).filter((price) => price > 0) : [parsePriceInput(draft.price)].filter((price) => price > 0);
     const updated = {
       ...product,
       price: priceVariants.length ? (prices.length ? Math.min(...prices) : 0) : parsePriceInput(draft.price),
-      originalPrice: parsePriceInput(draft.originalPrice),
       priceVariants,
       sphereItems: (product.sphereItems || []).map((item) => ({ ...item, price: parsePriceInput(draft.sphereItems[item.id] || "") })),
     };
@@ -493,7 +491,7 @@ export default function PriceProfileWorkspace({ products, categories, materials,
       const jewelryDetails = product.productType === "Trang sức" ? jewelryProfileDetails(product) : null;
       return <article className="price-profile-card" key={key}>
         <header className={jewelryDetails ? "price-profile-card-header-jewelry" : undefined}><div className="price-profile-product"><span className="price-profile-gem">◇</span><div><strong>{jewelryDetails?.name || product.name || "Sản phẩm chưa đặt tên"}</strong><span>{product.id} · {product.productType || "Trang sức"}{product.category ? ` · ${product.category}` : ""}</span></div></div>{jewelryDetails && <div className="price-profile-jewelry-details" aria-label="Thông tin trang sức">{jewelryDetails.attributes.map((attribute) => <div key={attribute.label}><span>{attribute.label}</span><strong className={!attribute.value ? "is-empty" : undefined}>{attribute.value || "—"}</strong></div>)}</div>}<span className={`price-profile-sync ${status.tone}`} title={product.loyversePriceSyncError || undefined}><i/>{status.text}</span></header>
-        <div className={`price-profile-price-head${hasPhysicalItems ? " price-profile-weight-head" : ""}`}><span>{hasPhysicalItems ? "Món / chất lượng" : "SKU / lựa chọn"}</span><span>{hasPhysicalItems ? "Khối lượng" : "Tồn"}</span><span>{hasPhysicalItems ? "Giá bán riêng" : pricePerCarat ? "Giá bán / 1 ct" : "Giá bán"}</span><span>{hasPhysicalItems ? "Ảnh" : pricePerCarat ? "Giá gốc / 1 ct" : "Giá gốc"}</span></div>
+        <div className={`price-profile-price-head${hasPhysicalItems ? " price-profile-weight-head" : ""}`}><span>{hasPhysicalItems ? "Món / chất lượng" : "SKU / lựa chọn"}</span><span>{hasPhysicalItems ? "Khối lượng" : "Tồn"}</span><span>{hasPhysicalItems ? "Giá bán riêng" : pricePerCarat ? "Giá bán / 1 ct" : "Giá bán"}</span><span>{hasPhysicalItems ? "Ảnh" : pricePerCarat ? "Giá nhập / 1 ct" : "Giá nhập"}</span></div>
         {hasPhysicalItems ? sphereItems.map((item, index) => <div className="price-profile-price-row price-profile-weight-row" key={item.id}>
           <div><strong>{item.label || `Món ${index + 1}`}</strong><small>{product.sphereQuality || "Chưa rõ chất lượng"} · {item.status === "AVAILABLE" ? "Còn trong kho" : item.status === "RESERVED" ? "Đang giữ cho đơn" : item.status === "SOLD" ? "Đã bán" : item.status}</small></div>
           <span>{new Intl.NumberFormat("vi-VN", { maximumFractionDigits: 3 }).format(Number(item.weightKg) || 0)} kg</span>
@@ -501,19 +499,19 @@ export default function PriceProfileWorkspace({ products, categories, materials,
           <span className={item.imageUrls?.length ? "price-profile-media-ready" : "price-profile-media-missing"}>{item.imageUrls?.length ? "Đã có ảnh" : "Thiếu ảnh"}</span>
         </div>) : variants.length ? variants.map((variant, index) => {
           const rowKey = variantKey(variant, index);
-          const value = draft.variants[rowKey] || { price: "", originalPrice: "" };
+          const value = draft.variants[rowKey] || { price: "" };
           return <div className="price-profile-price-row" key={rowKey}>
             <div><strong>{variant.sku || product.id}</strong><small>{variantDescription(product, variant)}{!variant.sku && variants.length > 1 ? " · Thiếu SKU riêng cho POS" : ""}</small></div>
             <span>{Number(variant.stock) || 0}</span>
             <label className="price-profile-input"><input aria-label={`Giá bán ${variant.sku || product.id}`} inputMode="numeric" value={value.price} onChange={(event) => updateVariantPriceDraft(product, variant, "price", event.target.value)}/><i>₫</i></label>
-            <label className="price-profile-input"><input aria-label={`Giá gốc ${variant.sku || product.id}`} inputMode="numeric" value={value.originalPrice} onChange={(event) => updateVariantPriceDraft(product, variant, "originalPrice", event.target.value)}/><i>₫</i></label>
+            <label className="price-profile-input"><input aria-label={`Giá nhập ${variant.sku || product.id}`} inputMode="numeric" value={variant.purchaseCost != null ? new Intl.NumberFormat("vi-VN").format(variant.purchaseCost) : ""} readOnly title="Giá nhập lấy từ phiếu nhập kho"/><i>₫</i></label>
           </div>;
         }) : <div className="price-profile-price-row">
           <div><strong>{product.id}</strong><small>Giá chung · tồn {Number(product.stock) || 0}</small></div><span>{Number(product.stock) || 0}</span>
           <label className="price-profile-input"><input aria-label={`Giá bán ${product.id}`} inputMode="numeric" value={draft.price} onChange={(event) => updateDraft(product, (current) => ({ ...current, price: event.target.value }))}/><i>₫</i></label>
-          <label className="price-profile-input"><input aria-label={`Giá gốc ${product.id}`} inputMode="numeric" value={draft.originalPrice} onChange={(event) => updateDraft(product, (current) => ({ ...current, originalPrice: event.target.value }))}/><i>₫</i></label>
+          <label className="price-profile-input"><input aria-label={`Giá nhập ${product.id}`} inputMode="numeric" value={product.purchaseCost != null ? new Intl.NumberFormat("vi-VN").format(product.purchaseCost) : ""} readOnly title="Giá nhập lấy từ phiếu nhập kho"/><i>₫</i></label>
         </div>}
-        <footer><div className="price-profile-save-hint">{product.loyversePriceSyncError ? <span title={product.loyversePriceSyncError}>{product.loyversePriceSyncError}</span> : <span>{product.loyversePriceSyncedAt ? `Đồng bộ lúc ${new Date(product.loyversePriceSyncedAt).toLocaleString("vi-VN")}` : "Giá gốc chỉ dùng làm giá tham chiếu trên Cherylish."}</span>}</div><button type="button" className="button button-primary" disabled={!changed || savingId === key} onClick={() => void save(product)}>{savingId === key ? "Đang lưu…" : "Lưu hồ sơ giá"}</button></footer>
+        <footer><div className="price-profile-save-hint">{product.loyversePriceSyncError ? <span title={product.loyversePriceSyncError}>{product.loyversePriceSyncError}</span> : <span>{product.loyversePriceSyncedAt ? `Đồng bộ lúc ${new Date(product.loyversePriceSyncedAt).toLocaleString("vi-VN")}` : "Giá nhập được lấy từ phiếu nhập kho · Giá bán đề xuất = giá nhập × 2,5."}</span>}</div><button type="button" className="button button-primary" disabled={!changed || savingId === key} onClick={() => void save(product)}>{savingId === key ? "Đang lưu…" : "Lưu hồ sơ giá"}</button></footer>
       </article>;
     })}{!filtered.length && <div className="price-profile-empty"><strong>Không tìm thấy hồ sơ giá</strong><span>Thử đổi từ khóa hoặc bộ lọc.</span></div>}</div>
   </section>;

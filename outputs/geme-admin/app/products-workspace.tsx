@@ -44,6 +44,7 @@ export type AdminProduct = {
   beadSizes?: string[];
   priceVariants?: ProductPriceVariant[];
   originalPrice?: number;
+  purchaseCost?: number;
   description?: string;
   fullDescription?: string;
   image?: string;
@@ -72,6 +73,7 @@ export type ProductPriceVariant = {
   gemstoneQuality?: string | null;
   price: number;
   originalPrice?: number;
+  purchaseCost?: number;
   stock: number;
   imageUrls?: string[];
   videoUrl?: string | null;
