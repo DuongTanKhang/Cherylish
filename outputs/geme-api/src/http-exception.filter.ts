@@ -19,6 +19,7 @@ const prismaMessages: Record<string, { status: number; message: string }> = {
   P2000: { status: HttpStatus.BAD_REQUEST, message: "Một giá trị nhập quá dài so với giới hạn của dữ liệu." },
   P2002: { status: HttpStatus.CONFLICT, message: "Mã phiếu hoặc SKU đã tồn tại. Kiểm tra lại mã hàng rồi thử lại." },
   P2003: { status: HttpStatus.CONFLICT, message: "Dữ liệu liên kết đã thay đổi hoặc không còn hợp lệ. Tải lại danh sách rồi thử lại." },
+  P2022: { status: HttpStatus.SERVICE_UNAVAILABLE, message: "Cấu trúc cơ sở dữ liệu chưa được cập nhật cho phiên bản này. Quản trị viên cần chạy migration rồi thử lại." },
   P2025: { status: HttpStatus.NOT_FOUND, message: "Không tìm thấy dữ liệu cần cập nhật. Tải lại trang rồi thử lại." },
   P2028: { status: HttpStatus.GATEWAY_TIMEOUT, message: "Giao dịch nhập kho quá thời gian xử lý. Kiểm tra danh sách phiếu trước khi gửi lại." },
   P2034: { status: HttpStatus.CONFLICT, message: "Dữ liệu kho vừa được cập nhật ở nơi khác. Tải lại tồn kho rồi thử lại." },
