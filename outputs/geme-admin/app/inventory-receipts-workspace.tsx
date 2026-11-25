@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useEffect, useMemo, useState } from "react";
-import { apiBaseUrl } from "../lib/api";
+import { apiBaseUrl, apiErrorMessage } from "../lib/api";
 
 type ReceiptSummary = {
   id: string;
@@ -74,11 +74,7 @@ const receiptVariantLabel = (item: ReceiptItem) => {
 
 async function request<T>(path: string): Promise<T> {
   const response = await fetch(`${apiBaseUrl}/${path}`, { cache: "no-store" });
-  if (!response.ok) {
-    let message = `API trả về lỗi ${response.status}.`;
-    try { const body = await response.json(); message = Array.isArray(body.message) ? body.message.join(" ") : body.message || message; } catch { /* empty response */ }
-    throw new Error(message);
-  }
+  if (!response.ok) throw new Error(await apiErrorMessage(response));
   return response.json() as Promise<T>;
 }
 
@@ -89,11 +85,7 @@ async function post<T>(path: string, body: unknown): Promise<T> {
     body: JSON.stringify(body),
     cache: "no-store",
   });
-  if (!response.ok) {
-    let message = `API trả về lỗi ${response.status}.`;
-    try { const result = await response.json(); message = Array.isArray(result.message) ? result.message.join(" ") : result.message || message; } catch { /* empty response */ }
-    throw new Error(message);
-  }
+  if (!response.ok) throw new Error(await apiErrorMessage(response));
   return response.json() as Promise<T>;
 }
 

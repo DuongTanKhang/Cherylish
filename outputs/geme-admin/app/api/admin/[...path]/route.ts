@@ -27,8 +27,8 @@ function hasSameOrigin(request: NextRequest) {
   }
 }
 
-function jsonError(message: string, status: number) {
-  return NextResponse.json({ message }, { status, headers: { "Cache-Control": "no-store" } });
+function jsonError(message: string, status: number, details: { errorCode?: string; requestId?: string } = {}) {
+  return NextResponse.json({ message, ...details }, { status, headers: { "Cache-Control": "no-store" } });
 }
 
 async function login(request: NextRequest) {
@@ -101,12 +101,16 @@ async function proxy(request: NextRequest, context: RouteContext) {
 
   try {
     const hasBody = !["GET", "HEAD"].includes(request.method);
+    // Receipt creation can run a serializable transaction with a 60s DB timeout.
+    // Let it finish and return its real result instead of aborting at the proxy's
+    // generic 30s timeout while the database transaction is still in progress.
+    const timeoutMs = request.method === "POST" && path.join("/") === "inventory/receipts" ? 75_000 : 30_000;
     const upstream = await fetch(targetUrl, {
       method: request.method,
       headers,
       body: hasBody ? await request.arrayBuffer() : undefined,
       cache: "no-store",
-      signal: AbortSignal.timeout(30_000),
+      signal: AbortSignal.timeout(timeoutMs),
     });
     const responseHeaders = new Headers({ "Cache-Control": "no-store" });
     for (const name of ["content-type", "content-disposition", "retry-after", "etag", "last-modified"]) {
@@ -114,8 +118,17 @@ async function proxy(request: NextRequest, context: RouteContext) {
       if (value) responseHeaders.set(name, value);
     }
     return new Response(upstream.body, { status: upstream.status, headers: responseHeaders });
-  } catch {
-    return jsonError("Không kết nối được API GEME. Vui lòng thử lại.", 502);
+  } catch (error) {
+    const requestId = crypto.randomUUID();
+    const errorName = error instanceof Error ? error.name : "API_PROXY_ERROR";
+    const timedOut = errorName === "TimeoutError" || errorName === "AbortError";
+    const errorCode = timedOut ? "API_TIMEOUT" : "API_UNAVAILABLE";
+    console.error(JSON.stringify({ event: "admin_api_proxy_failed", requestId, method: request.method, path: path.join("/"), errorCode, errorName }));
+    return jsonError(
+      timedOut ? "API phản hồi quá thời gian. Vui lòng chờ một chút rồi thử lại." : "Không kết nối được API GEME. Vui lòng thử lại.",
+      timedOut ? 504 : 502,
+      { errorCode, requestId },
+    );
   }
 }
 

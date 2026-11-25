@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
-import { apiBaseUrl } from "../lib/api";
+import { apiBaseUrl, apiErrorMessage } from "../lib/api";
 import type { AdminCategory } from "./categories-workspace";
 import type { MaterialOption } from "./materials-workspace";
 import { compressProductImage } from "./product-images";
@@ -323,11 +323,7 @@ function categoryForReceiptProduct(product: InventoryProduct) {
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${apiBaseUrl}/${path}`, { ...init, cache: "no-store", headers: { "Content-Type": "application/json", ...init?.headers } });
-  if (!response.ok) {
-    let message = `API trả về lỗi ${response.status}.`;
-    try { const body = await response.json(); message = Array.isArray(body.message) ? body.message.join(" ") : body.message || message; } catch { /* empty response */ }
-    throw new Error(message);
- }
+  if (!response.ok) throw new Error(await apiErrorMessage(response));
   return response.json() as Promise<T>;
 }
 

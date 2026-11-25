@@ -5,6 +5,7 @@ import type { NestExpressApplication } from "@nestjs/platform-express";
 import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger";
 import helmet from "helmet";
 import { AppModule } from "./app.module.js";
+import { HttpExceptionFilter } from "./http-exception.filter.js";
 
 type RateLimitRequest = { method: string; path: string; ip?: string; socket: { remoteAddress?: string } };
 type RateLimitResponse = {
@@ -107,6 +108,7 @@ async function bootstrap() {
   app.enableCors({ origin: origins, credentials: true });
   app.setGlobalPrefix("api/v1");
   app.useGlobalPipes(new ValidationPipe({ transform: true, whitelist: true, forbidUnknownValues: true }));
+  app.useGlobalFilters(new HttpExceptionFilter());
 
   if (process.env.NODE_ENV !== "production") {
     const document = SwaggerModule.createDocument(
