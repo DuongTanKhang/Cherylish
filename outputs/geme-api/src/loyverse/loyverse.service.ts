@@ -193,10 +193,23 @@ export class LoyverseService {
 
   private async findOrCreateVariant(product: any, variant: any, sku: string, price: number) {
     const current = await this.findVariant(sku);
-    if (current || sku.length > 40) return current;
     const storeId = this.config.get<string>("LOYVERSE_STORE_ID")!.trim();
     const caption = this.variantCaption(variant);
     const displayName = `${String(product.name || "Sản phẩm").slice(0, Math.max(1, 62 - (caption ? caption.length + 3 : 0)))}${caption ? ` · ${caption}` : ""}`;
+    const itemDescription = String(product.description || "").trim().slice(0, 32768);
+    if (current) {
+      await this.request("/items", {
+        method: "POST",
+        body: JSON.stringify({
+          id: current.item_id,
+          item_name: displayName.slice(0, 64),
+          ...(itemDescription ? { description: itemDescription } : {}),
+          track_stock: true,
+        }),
+      });
+      return current;
+    }
+    if (sku.length > 40) return null;
     const remoteVariant: Record<string, unknown> = {
       sku,
       reference_variant_id: `cherylish:${String(variant?.id || `${product.id}:${sku}`).slice(0, 110)}`,
@@ -207,7 +220,8 @@ export class LoyverseService {
       method: "POST",
       body: JSON.stringify({
         item_name: displayName.slice(0, 64),
-      reference_id: `cherylish:${String(product.id).slice(0, 70)}:${sku.slice(0, 60)}`,
+        description: itemDescription,
+        reference_id: `cherylish:${String(product.id).slice(0, 70)}:${sku.slice(0, 60)}`.slice(0, 128),
         track_stock: true,
         variants: [remoteVariant],
       }),

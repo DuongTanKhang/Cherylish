@@ -151,6 +151,7 @@ export default function AdminShell({initialPermissions,initialRole,initialAdminI
   const [catalogSyncStatus,setCatalogSyncStatus]=useState<MaterialSyncStatus>('connecting');
   const [loyverseChecking,setLoyverseChecking]=useState(false);
   const [loyverseOrderSyncing,setLoyverseOrderSyncing]=useState(false);
+  const [loyverseProductSyncing,setLoyverseProductSyncing]=useState(false);
   const [loyverseResult,setLoyverseResult]=useState<Row|null>(null);
   const [loyverseStatus,setLoyverseStatus]=useState<Row|null>(null);
   const [search,setSearch]=useState('');
@@ -255,6 +256,7 @@ export default function AdminShell({initialPermissions,initialRole,initialAdminI
   const notify=(text:string)=>setToast(text);
   const testLoyverseConnection=async()=>{if(loyverseChecking)return;setLoyverseChecking(true);setLoyverseResult(null);try{const result=await apiRequest('integrations/loyverse/test-connection','POST') as Row;setLoyverseResult(result);notify(result.ok?`Kết nối Loyverse thành công: ${result.storeName||result.storeId}.`:String(result.message||'Không kết nối được Loyverse.'));}catch(error){const message=error instanceof Error?error.message:'Không kiểm tra được kết nối Loyverse.';setLoyverseResult({ok:false,code:'API_ERROR',message});notify(message);}finally{setLoyverseChecking(false);}};
   const syncLoyverseOrders=async()=>{if(loyverseOrderSyncing)return;setLoyverseOrderSyncing(true);try{const result=await apiRequest('integrations/loyverse/sync-orders','POST',{}) as {queuedOrders?:number};notify(result.queuedOrders?`Đã đưa ${result.queuedOrders} đơn đủ điều kiện vào hàng đợi Loyverse.`:'Không có đơn đã thanh toán cần đồng bộ.');}catch(error){notify(error instanceof Error?error.message:'Không thể đồng bộ đơn sang Loyverse.');}finally{setLoyverseOrderSyncing(false);}};
+  const syncLoyverseProducts=async()=>{if(loyverseProductSyncing)return;setLoyverseProductSyncing(true);try{const result=await apiRequest('integrations/loyverse/sync','POST',{}) as {queuedProducts?:number};notify(result.queuedProducts?`Đã đưa ${result.queuedProducts} sản phẩm vào hàng đợi đồng bộ Loyverse.`:'Không có sản phẩm đủ điều kiện đồng bộ.');}catch(error){notify(error instanceof Error?error.message:'Không thể đồng bộ sản phẩm sang Loyverse.');}finally{setLoyverseProductSyncing(false);}};
   const apiRequest=useCallback(async(path:string,method='GET',body?:unknown,extraHeaders?:Record<string,string>)=>{
     const normalizedMethod=method.toUpperCase();
     const endpoint=`${apiBase}/${path}`;
@@ -818,8 +820,9 @@ export default function AdminShell({initialPermissions,initialRole,initialAdminI
         </span>
       </div>
       <div className="loyverse-actions">
-        <span className="muted">Kiểm tra kết nối chỉ đọc. Đồng bộ tạo phiếu bán và có thể trừ tồn Loyverse; chỉ gửi đơn thanh toán đủ, chưa hủy hoặc hoàn tiền.</span>
+        <span className="muted">Đồng bộ sản phẩm đẩy SKU, tên, mô tả, giá bán và tồn kho từ Admin sang Loyverse. Đồng bộ đơn tạo phiếu bán và có thể trừ tồn Loyverse; chỉ gửi đơn thanh toán đủ, chưa hủy hoặc hoàn tiền.</span>
         <button className="button button-primary" type="button" onClick={()=>void testLoyverseConnection()} disabled={loyverseChecking||apiStatus!=="connected"||!loyverseStatus?.configured}>{loyverseChecking ? "Đang kiểm tra…" : "Kiểm tra kết nối"}</button>
+        <button className="button button-quiet" type="button" onClick={()=>void syncLoyverseProducts()} disabled={loyverseProductSyncing||apiStatus!=="connected"||!loyverseStatus?.configured}>{loyverseProductSyncing ? "Đang xếp hàng…" : "Đồng bộ sản phẩm"}</button>
         <button className="button button-quiet" type="button" onClick={()=>void syncLoyverseOrders()} disabled={loyverseOrderSyncing||apiStatus!=="connected"||!loyverseStatus?.configured}>{loyverseOrderSyncing ? "Đang xếp hàng…" : "Đồng bộ đơn"}</button>
       </div>
     </section>

@@ -217,6 +217,7 @@ export class CommerceService implements OnModuleInit, OnModuleDestroy {
           kind: true,
           sku: true,
           name: true,
+          description: true,
           price: true,
           stock: true,
           loyverseStockSyncStatus: true,
