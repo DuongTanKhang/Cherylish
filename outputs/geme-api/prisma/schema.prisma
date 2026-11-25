@@ -711,6 +711,12 @@ model Order {
   totalAmount     Decimal         @map("total_amount") @db.Decimal(14, 0)
   note            String?         @db.Text
   kiotVietOrderId String?         @unique @map("kiot_viet_order_id") @db.VarChar(80)
+  loyverseOrderSyncStatus String? @map("loyverse_order_sync_status") @db.VarChar(20)
+  loyverseOrderSyncAttempts Int   @default(0) @map("loyverse_order_sync_attempts")
+  loyverseOrderSyncNextAttemptAt DateTime? @map("loyverse_order_sync_next_attempt_at") @db.Timestamptz(3)
+  loyverseOrderSyncedAt DateTime? @map("loyverse_order_synced_at") @db.Timestamptz(3)
+  loyverseReceiptNumber String? @map("loyverse_receipt_number") @db.VarChar(40)
+  loyverseOrderSyncError String? @map("loyverse_order_sync_error") @db.Text
   placedAt        DateTime        @default(now()) @map("placed_at") @db.Timestamptz(3)
   createdAt       DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt       DateTime        @updatedAt @map("updated_at") @db.Timestamptz(3)
@@ -736,6 +742,7 @@ model Order {
   @@index([trackingCode])
   @@index([inventoryReservedAt, inventoryCommittedAt, inventoryReleasedAt])
   @@index([status, inventoryReservationExpiresAt])
+  @@index([loyverseOrderSyncStatus, loyverseOrderSyncNextAttemptAt])
   @@map("orders")
 }
 

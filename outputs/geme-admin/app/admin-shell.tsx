@@ -150,6 +150,7 @@ export default function AdminShell({initialPermissions,initialRole,initialAdminI
   useEffect(()=>{if(!adminPermissionsLoaded)return;if(!canOpenAdminView(adminPermissions,view)){const firstAllowed=menu.find((item)=>canOpenAdminView(adminPermissions,item.key));if(firstAllowed)setView(firstAllowed.key);}},[adminPermissionsLoaded,adminPermissions,view]);
   const [catalogSyncStatus,setCatalogSyncStatus]=useState<MaterialSyncStatus>('connecting');
   const [loyverseChecking,setLoyverseChecking]=useState(false);
+  const [loyverseOrderSyncing,setLoyverseOrderSyncing]=useState(false);
   const [loyverseResult,setLoyverseResult]=useState<Row|null>(null);
   const [loyverseStatus,setLoyverseStatus]=useState<Row|null>(null);
   const [search,setSearch]=useState('');
@@ -253,6 +254,7 @@ export default function AdminShell({initialPermissions,initialRole,initialAdminI
   const selectedReceiptOrder=data.orders.find(order=>order.id===receiptOrderId);
   const notify=(text:string)=>setToast(text);
   const testLoyverseConnection=async()=>{if(loyverseChecking)return;setLoyverseChecking(true);setLoyverseResult(null);try{const result=await apiRequest('integrations/loyverse/test-connection','POST') as Row;setLoyverseResult(result);notify(result.ok?`Kết nối Loyverse thành công: ${result.storeName||result.storeId}.`:String(result.message||'Không kết nối được Loyverse.'));}catch(error){const message=error instanceof Error?error.message:'Không kiểm tra được kết nối Loyverse.';setLoyverseResult({ok:false,code:'API_ERROR',message});notify(message);}finally{setLoyverseChecking(false);}};
+  const syncLoyverseOrders=async()=>{if(loyverseOrderSyncing)return;setLoyverseOrderSyncing(true);try{const result=await apiRequest('integrations/loyverse/sync-orders','POST',{}) as {queuedOrders?:number};notify(result.queuedOrders?`Đã đưa ${result.queuedOrders} đơn đủ điều kiện vào hàng đợi Loyverse.`:'Không có đơn đã thanh toán cần đồng bộ.');}catch(error){notify(error instanceof Error?error.message:'Không thể đồng bộ đơn sang Loyverse.');}finally{setLoyverseOrderSyncing(false);}};
   const apiRequest=useCallback(async(path:string,method='GET',body?:unknown,extraHeaders?:Record<string,string>)=>{
     const normalizedMethod=method.toUpperCase();
     const endpoint=`${apiBase}/${path}`;
@@ -713,7 +715,7 @@ export default function AdminShell({initialPermissions,initialRole,initialAdminI
   const tablePanel=(key:ViewKey)=> <section className="panel"><div className="table-toolbar"><label className="global-search"><Icon name="search"/><input value={tableSearch} onChange={e=>setTableSearch(e.target.value)} type="search" placeholder="Tìm trong danh sách..."/></label>{addLabel[key]&&<button className="button button-primary" onClick={()=>openForm(key as keyof typeof fieldDefs)}><Icon name="plus"/>{addLabel[key]}</button>}</div><div className="page-table-wrap"><table className="data-table"><thead><tr>{headers[key].map((head,i)=><th key={`${head}-${i}`}>{head}</th>)}</tr></thead><tbody>{renderGeneralRows()}</tbody></table></div></section>;
 
   const orderStats=[{label:'Tất cả đơn',filter:'',tone:'green',icon:'bag'},{label:'Chờ thanh toán',filter:'Chờ thanh toán',tone:'amber',icon:'clock'},{label:'Chờ xác nhận',filter:'Chờ xác nhận',tone:'amber',icon:'clock'},{label:'Đang xử lý',filter:'Đang xử lý',tone:'orange',icon:'box'},{label:'Đang giao',filter:'Đang giao',tone:'blue',icon:'truck'},{label:'Đã giao',filter:'Đã giao',tone:'green',icon:'check'}];
-  const ordersPage=()=>view==='orderCreate'?<OrderCreateWorkspace products={data.products.filter((product)=>product.productType!=="Vật phẩm")} customers={data.customers} onBack={()=>go('orders')} onCreateCustomer={createPosCustomer} onCreateOrder={createPosOrder} onLoadBankQr={loadBankQrSettings}/>:<div className="orders-page">
+  const ordersPage=()=>view==='orderCreate'?<OrderCreateWorkspace products={data.products.filter((product)=>product.productType!=="Vật phẩm")} customers={data.customers} onBack={()=>go('orders')} onCreateCustomer={createPosCustomer} onCreateOrder={createPosOrder} onLoadBankQr={loadBankQrSettings}/>:<div className={'orders-page'+(selectedOrder?' has-selected-order':'')}>
     <section className="orders-main">
       <div className="shopee-source-switch"><button className="is-active" onClick={()=>go('orders')}>Đơn Cherylish · Website & trực tiếp</button><button onClick={()=>go('shopeeOrders')}>Đơn Shopee <span>Chỉ đọc</span></button></div>
       <div className="orders-heading"><div><h1>Đơn hàng</h1><p>Quản lý và theo dõi các đơn hàng của Cherylish.</p></div>
@@ -811,13 +813,14 @@ export default function AdminShell({initialPermissions,initialRole,initialAdminI
       <div className="notice-card">
         <span className={"activity-icon " + (loyverseResult?.ok ? "" : "amber")}><Icon name={loyverseResult?.ok ? "check" : "info"}/></span>
         <span>{loyverseResult?.ok ? "Kiểm tra kết nối thành công" : loyverseResult?.code==="NOT_CONFIGURED" ? "Chưa có đủ cấu hình Loyverse" : loyverseResult?.message ? "Không kết nối được Loyverse" : loyverseStatus?.configured ? "Đã tìm thấy cấu hình phía máy chủ" : "Chưa tìm thấy cấu hình Loyverse"}
-          <small>{loyverseResult?.message || (loyverseStatus?.configured ? "Nhấn “Kiểm tra kết nối” để xác minh token và Store ID với API Loyverse." : "Cần bật LOYVERSE_ENABLED và cấu hình access token cùng Store ID trong .env.docker.")}</small>
+          <small>{loyverseResult?.message || (loyverseStatus?.configured ? "Nhấn “Kiểm tra kết nối” để xác minh token và Store ID với API Loyverse." : "Cần bật LOYVERSE_ENABLED và cấu hình access token cùng Store ID trong biến môi trường của máy chủ.")}</small>
           {loyverseResult?.ok && <small>Cửa hàng: {String(loyverseResult.storeName || "Loyverse")} · Store ID: {String(loyverseResult.storeId || "")}</small>}
         </span>
       </div>
       <div className="loyverse-actions">
-        <span className="muted">Chỉ kiểm tra quyền truy cập và cửa hàng; không thay đổi dữ liệu.</span>
+        <span className="muted">Kiểm tra kết nối chỉ đọc. Đồng bộ tạo phiếu bán và có thể trừ tồn Loyverse; chỉ gửi đơn thanh toán đủ, chưa hủy hoặc hoàn tiền.</span>
         <button className="button button-primary" type="button" onClick={()=>void testLoyverseConnection()} disabled={loyverseChecking||apiStatus!=="connected"||!loyverseStatus?.configured}>{loyverseChecking ? "Đang kiểm tra…" : "Kiểm tra kết nối"}</button>
+        <button className="button button-quiet" type="button" onClick={()=>void syncLoyverseOrders()} disabled={loyverseOrderSyncing||apiStatus!=="connected"||!loyverseStatus?.configured}>{loyverseOrderSyncing ? "Đang xếp hàng…" : "Đồng bộ đơn"}</button>
       </div>
     </section>
   );

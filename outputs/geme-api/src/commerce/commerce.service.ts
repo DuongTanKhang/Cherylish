@@ -149,6 +149,7 @@ export class CommerceService implements OnModuleInit, OnModuleDestroy {
   private promotionStatusTimer: ReturnType<typeof setInterval> | null = null;
   private loyverseSyncTimer: ReturnType<typeof setInterval> | null = null;
   private loyverseSyncRunning = false;
+  private loyverseOrderSyncRunning = false;
   private categoryCache: { expiresAt: number; records: any[] } | null = null;
   private categoryLoad: Promise<any[]> | null = null;
   private categoryCacheVersion = 0;
@@ -240,6 +241,7 @@ export class CommerceService implements OnModuleInit, OnModuleDestroy {
         if (stockPending) await this.syncProductStockToLoyverse(product);
         if (pricePending) await this.syncProductPriceToLoyverse(product);
       }
+      await this.processLoyverseOrderSync();
     } catch (error) {
       this.logger.warn("Lỗi khi xử lý hàng đợi đồng bộ Loyverse.", error);
     } finally {
@@ -249,6 +251,63 @@ export class CommerceService implements OnModuleInit, OnModuleDestroy {
 
   private nextLoyverseRetry(attempts: number) {
     return new Date(Date.now() + Math.min(60 * 60_000, 15_000 * 2 ** Math.min(attempts, 7)));
+  }
+
+  private async processLoyverseOrderSync() {
+    if (this.loyverseOrderSyncRunning || !this.loyverse.isConfigured()) return;
+    this.loyverseOrderSyncRunning = true;
+    try {
+      const now = new Date();
+      const pending = await this.prisma.order.findMany({
+        where: {
+          status: { not: "CANCELLED" },
+          payments: { some: { status: "PAID" } },
+          loyverseOrderSyncStatus: { in: ["PENDING", "RETRYING", "SYNCING"] },
+          OR: [{ loyverseOrderSyncNextAttemptAt: null }, { loyverseOrderSyncNextAttemptAt: { lte: now } }],
+        },
+        orderBy: { placedAt: "asc" },
+        take: 3,
+        include: {
+          items: { select: { productSku: true, quantity: true, unitPrice: true } },
+          payments: { select: { method: true, status: true, amount: true, paidAt: true }, orderBy: { createdAt: "asc" } },
+        },
+      });
+      for (const order of pending) {
+        const attempts = Number(order.loyverseOrderSyncAttempts || 0) + 1;
+        await this.prisma.order.update({ where: { id: order.id }, data: { loyverseOrderSyncStatus: "SYNCING", loyverseOrderSyncAttempts: attempts, loyverseOrderSyncError: null } });
+        try {
+          const result = await this.loyverse.syncPaidOrders([order]);
+          const detail = result.details[0];
+          if (detail?.status === "synced" || detail?.status === "already-synced") {
+            await this.prisma.order.update({ where: { id: order.id }, data: {
+              loyverseOrderSyncStatus: "SYNCED", loyverseOrderSyncedAt: new Date(), loyverseReceiptNumber: detail.receiptNumber || null,
+              loyverseOrderSyncNextAttemptAt: null, loyverseOrderSyncError: null,
+            } });
+          } else if (detail?.status === "skipped") {
+            await this.prisma.order.update({ where: { id: order.id }, data: {
+              loyverseOrderSyncStatus: "BLOCKED", loyverseOrderSyncNextAttemptAt: null,
+              loyverseOrderSyncError: (detail.message || "Đơn chưa đủ điều kiện đồng bộ.").slice(0, 1000),
+            } });
+          } else {
+            const message = detail?.message || "Loyverse chưa nhận đơn; hệ thống sẽ thử lại.";
+            await this.prisma.order.update({ where: { id: order.id }, data: {
+              loyverseOrderSyncStatus: "RETRYING", loyverseOrderSyncNextAttemptAt: this.nextLoyverseRetry(attempts),
+              loyverseOrderSyncError: message.slice(0, 1000),
+            } });
+          }
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Không thể đồng bộ đơn với Loyverse.";
+          await this.prisma.order.update({ where: { id: order.id }, data: {
+            loyverseOrderSyncStatus: "RETRYING", loyverseOrderSyncNextAttemptAt: this.nextLoyverseRetry(attempts),
+            loyverseOrderSyncError: message.slice(0, 1000),
+          } });
+        }
+      }
+    } catch (error) {
+      this.logger.warn("Lỗi khi xử lý hàng đợi đồng bộ đơn Loyverse.", error);
+    } finally {
+      this.loyverseOrderSyncRunning = false;
+    }
   }
 
   private async syncProductStockToLoyverse(product: any) {
@@ -299,8 +358,26 @@ export class CommerceService implements OnModuleInit, OnModuleDestroy {
     return this.loyverse.testConnection();
   }
 
+  async syncLoyverseOrders() {
+    if (!this.loyverse.isConfigured()) throw new BadRequestException("Chưa cấu hình kết nối Loyverse trên máy chủ: cần bật tích hợp, access token và Store ID.");
+    const now = new Date();
+    const orders = await this.prisma.order.findMany({
+      where: {
+        status: { not: "CANCELLED" }, payments: { some: { status: "PAID" } },
+        OR: [{ loyverseOrderSyncStatus: null }, { loyverseOrderSyncStatus: { in: ["PENDING", "RETRYING", "SYNCING", "BLOCKED"] } }],
+      },
+      select: { id: true },
+    });
+    if (!orders.length) return { queuedOrders: 0 };
+    const queued = await this.prisma.order.updateMany({
+      where: { id: { in: orders.map((order) => order.id) }, status: { not: "CANCELLED" } },
+      data: { loyverseOrderSyncStatus: "PENDING", loyverseOrderSyncAttempts: 0, loyverseOrderSyncNextAttemptAt: now, loyverseOrderSyncError: null },
+    });
+    return { queuedOrders: queued.count };
+  }
+
   async queueLoyverseResync() {
-    if (!this.loyverse.isConfigured()) throw new BadRequestException("Hãy cấu hình LOYVERSE_ENABLED, LOYVERSE_ACCESS_TOKEN và LOYVERSE_STORE_ID trong .env.docker rồi khởi động lại container.");
+    if (!this.loyverse.isConfigured()) throw new BadRequestException("Chưa cấu hình kết nối Loyverse trên máy chủ: cần bật tích hợp, access token và Store ID.");
     const now = new Date();
     const products = await this.prisma.product.updateMany({ where: { kind: { in: ["JEWELRY", "GEMSTONE"] } }, data: {
         loyverseStockSyncStatus: "PENDING", loyverseStockSyncAttempts: 0, loyverseStockSyncNextAttemptAt: now, loyverseStockSyncError: null,

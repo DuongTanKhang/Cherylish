@@ -18,6 +18,8 @@ type LoyverseVariant = {
   stores?: Array<Record<string, unknown>>;
 };
 
+type LoyversePaymentType = { id: string; name: string; type: string; stores?: string[]; deleted_at?: string | null };
+
 @Injectable()
 export class LoyverseService {
   constructor(private readonly config: ConfigService) {}
@@ -57,6 +59,106 @@ export class LoyverseService {
       const message = error instanceof Error ? error.message : "Không kiểm tra được kết nối Loyverse.";
       return { ok: false, code: "API_ERROR", message };
     }
+  }
+
+  async syncPaidOrders(orders: any[]) {
+    if (!this.isConfigured()) throw new Error("Chưa cấu hình kết nối Loyverse trên máy chủ.");
+    const storeId = this.config.get<string>("LOYVERSE_STORE_ID")!.trim();
+    const { payment_types: paymentTypes = [] } = await this.request<{ payment_types?: LoyversePaymentType[] }>("/payment_types?limit=250");
+    const result = { synced: 0, alreadySynced: 0, skipped: 0, failed: 0, details: [] as Array<{ orderCode: string; status: string; message?: string; receiptNumber?: string }> };
+
+    for (const order of orders) {
+      const orderCode = String(order.code || "");
+      try {
+        const existingQuery = new URLSearchParams({ store_id: storeId, order: orderCode, limit: "10" });
+        const existing = await this.request<{ receipts?: Array<{ order?: string; receipt_type?: string; receipt_number?: string }> }>(`/receipts?${existingQuery}`);
+        const prior = (existing.receipts || []).find((receipt) => receipt.order === orderCode && receipt.receipt_type === "SALE");
+        if (prior) {
+          result.alreadySynced++;
+          result.details.push({ orderCode, status: "already-synced", receiptNumber: prior.receipt_number });
+          continue;
+        }
+
+        if (order.status === "CANCELLED" || order.payments?.some((payment: any) => ["REFUNDED", "PARTIALLY_REFUNDED"].includes(String(payment.status)))) {
+          result.skipped++;
+          result.details.push({ orderCode, status: "skipped", message: "Đơn đã hủy hoặc có khoản hoàn tiền." });
+          continue;
+        }
+        const paidPayments = (order.payments || []).filter((payment: any) => payment.status === "PAID");
+        const paidAmount = paidPayments.reduce((sum: number, payment: any) => sum + Number(payment.amount || 0), 0);
+        if (!paidPayments.length || paidAmount < Number(order.totalAmount || 0)) {
+          result.skipped++;
+          result.details.push({ orderCode, status: "skipped", message: "Đơn chưa thanh toán đủ; đơn COD chỉ được gửi sau khi đã thu tiền." });
+          continue;
+        }
+        const methods = [...new Set(paidPayments.map((payment: any) => String(payment.method || "OTHER")))];
+        if (methods.length !== 1) {
+          result.skipped++;
+          result.details.push({ orderCode, status: "skipped", message: "Loyverse API chỉ nhận một phương thức thanh toán cho mỗi đơn." });
+          continue;
+        }
+        const method = methods[0];
+        const availableTypes = paymentTypes.filter((type) => !type.deleted_at && (!type.stores?.length || type.stores.includes(storeId)));
+        const methodNeedle: Record<string, string[]> = {
+          COD: ["cash", "tiền mặt"],
+          BANK_TRANSFER: ["transfer", "bank", "chuyển khoản"],
+          MOMO: ["momo"],
+          CREDIT_CARD: ["card", "thẻ"],
+          OTHER: ["other", "khác"],
+        };
+        let paymentType = availableTypes.find((type) => (methodNeedle[method] || []).some((needle) => type.name.toLocaleLowerCase("vi").includes(needle)));
+        if (!paymentType) {
+          const expectedType = method === "COD" ? "CASH" : method === "CREDIT_CARD" ? "NONINTEGRATEDCARD" : "OTHER";
+          paymentType = availableTypes.find((type) => type.type === expectedType);
+        }
+        if (!paymentType) {
+          result.skipped++;
+          result.details.push({ orderCode, status: "skipped", message: `Không tìm thấy loại thanh toán Loyverse phù hợp với ${method}.` });
+          continue;
+        }
+
+        const lineItems: Array<{ variant_id: string; quantity: number; price: number }> = [];
+        let missingSku = "";
+        for (const item of order.items || []) {
+          const sku = String(item.productSku || "").trim();
+          if (!sku) { missingSku = "(thiếu SKU)"; break; }
+          const variant = await this.findVariant(sku);
+          if (!variant) { missingSku = sku; break; }
+          lineItems.push({ variant_id: variant.variant_id, quantity: Number(item.quantity), price: Number(item.unitPrice) });
+        }
+        if (missingSku) {
+          result.skipped++;
+          result.details.push({ orderCode, status: "skipped", message: `SKU ${missingSku} chưa có trong Loyverse; hãy đồng bộ sản phẩm trước.` });
+          continue;
+        }
+        if (!lineItems.length) {
+          result.skipped++;
+          result.details.push({ orderCode, status: "skipped", message: "Đơn không có dòng sản phẩm hợp lệ." });
+          continue;
+        }
+
+        const receipt = await this.request<{ receipt_number?: string }>("/receipts", {
+          method: "POST",
+          body: JSON.stringify({
+            store_id: storeId,
+            order: orderCode,
+            source: "Cherylish Admin",
+            receipt_date: (order.placedAt || order.createdAt || new Date()).toISOString(),
+            note: `Đơn Cherylish ${orderCode}`,
+            line_items: lineItems,
+            ...(Number(order.discountAmount) > 0 ? { total_discounts: [{ scope: "RECEIPT", money_amount: Number(order.discountAmount) }] } : {}),
+            ...(Number(order.shippingFee) > 0 ? { surcharge: Number(order.shippingFee) } : {}),
+            payments: [{ payment_type_id: paymentType.id, money_amount: Number(order.totalAmount), paid_at: (paidPayments[paidPayments.length - 1].paidAt || new Date()).toISOString() }],
+          }),
+        });
+        result.synced++;
+        result.details.push({ orderCode, status: "synced", receiptNumber: receipt.receipt_number });
+      } catch (error) {
+        result.failed++;
+        result.details.push({ orderCode, status: "failed", message: error instanceof Error ? error.message : "Lỗi không xác định khi gửi đơn lên Loyverse." });
+      }
+    }
+    return result;
   }
 
   private async request<T>(path: string, init?: RequestInit): Promise<T> {

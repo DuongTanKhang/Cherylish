@@ -67,6 +67,7 @@ export class CommerceController {
   @Get("integrations/loyverse/status") @admin() loyverseStatus() { return this.commerce.loyverseStatus(); }
   @Post("integrations/loyverse/test-connection") @admin() testLoyverseConnection() { return this.commerce.testLoyverseConnection(); }
   @Post("integrations/loyverse/sync") @admin() queueLoyverseResync() { return this.commerce.queueLoyverseResync(); }
+  @Post("integrations/loyverse/sync-orders") @admin() syncLoyverseOrders() { return this.commerce.syncLoyverseOrders(); }
 
   @Get("loyalty") @admin() loyaltyOverview(@Query("limit") limit?: string) { return this.loyalty.adminOverview(limit); }
   @Patch("loyalty/settings") @admin() saveLoyaltySettings(@Req() request: AdminRequest, @Body() body: Record<string, unknown>) { return this.loyalty.saveSettings(body, request.adminIdentity); }
